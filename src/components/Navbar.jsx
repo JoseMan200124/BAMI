@@ -1,32 +1,49 @@
+// src/components/Navbar.jsx
 import { Link, useLocation } from 'react-router-dom'
 import LoginDialog from './LoginDialog.jsx'
 import { useState } from 'react'
 
+const BASE = '/bami'
 
-const NavLink = ({to, children}) => {
+// Asegura que todos los paths salgan con /bami al inicio
+const withBase = (path) => {
+    if (!path) return BASE
+    return path.startsWith(BASE) ? path : `${BASE}${path}`
+}
+
+const NavLink = ({ to, children }) => {
     const { pathname } = useLocation()
-    const active = pathname === to
+    const href = withBase(to)
+    const active = pathname === href || pathname.replace(/\/$/, '') === href.replace(/\/$/, '')
     return (
-        <Link to={to} className={`px-3 py-2 rounded-xl ${active? 'bg-bami-yellow' : 'hover:bg-gray-100'}`}>{children}</Link>
+        <Link
+            to={href}
+            className={`px-3 py-2 rounded-xl ${active ? 'bg-bami-yellow' : 'hover:bg-gray-100'}`}
+        >
+            {children}
+        </Link>
     )
 }
 
-
-export default function Navbar(){
+export default function Navbar() {
     const [open, setOpen] = useState(false)
     const isAuthed = !!localStorage.getItem('bami_token')
 
-
-    const logout = () => { localStorage.removeItem('bami_token'); location.reload() }
-
+    const logout = () => {
+        localStorage.removeItem('bami_token')
+        // vuelve al inicio bajo /bami
+        window.location.href = withBase('/')
+    }
 
     return (
         <header className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-gray-100">
             <div className="max-w-7xl mx-auto h-[var(--header-h)] flex items-center justify-between px-4">
-                <Link to="/" className="flex items-center gap-2">
-                    <img src="/bami-logo.svg" alt="BAMI" className="h-9"/>
+                <Link to={withBase('/')} className="flex items-center gap-2">
+                    {/* usa el logo con prefijo /bami para que resuelva bien en subruta */}
+                    <img src={`${BASE}/bami-logo.svg`} alt="BAMI" className="h-9" />
                     <span className="font-extrabold">BAMI</span>
                 </Link>
+
                 <nav className="hidden md:flex items-center gap-1">
                     <NavLink to="/">Inicio</NavLink>
                     <NavLink to="/como-funciona">¿Cómo funciona?</NavLink>
@@ -35,19 +52,20 @@ export default function Navbar(){
                     <NavLink to="/beneficios">Beneficios</NavLink>
                     <NavLink to="/dev">Desarrolladores</NavLink>
                 </nav>
+
                 <div className="flex items-center gap-2">
                     {isAuthed ? (
                         <>
-                            <Link className="btn btn-dark" to="/leads">Leads</Link>
-                            <Link className="btn btn-dark" to="/clientes">Clientes</Link>
+                            <Link className="btn btn-dark" to={withBase('/leads')}>Leads</Link>
+                            <Link className="btn btn-dark" to={withBase('/clientes')}>Clientes</Link>
                             <button className="btn" onClick={logout}>Salir</button>
                         </>
                     ) : (
-                        <button className="btn btn-primary" onClick={()=>setOpen(true)}>Iniciar sesión</button>
+                        <button className="btn btn-primary" onClick={() => setOpen(true)}>Iniciar sesión</button>
                     )}
                 </div>
             </div>
-            {open && <LoginDialog onClose={()=>setOpen(false)} />}
+            {open && <LoginDialog onClose={() => setOpen(false)} />}
         </header>
     )
 }
