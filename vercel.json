@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/bami", "destination": "/index.html" },
+    { "source": "/bami/(.*)", "destination": "/index.html" }
+  ]
+}
