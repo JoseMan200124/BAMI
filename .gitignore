@@ -1,0 +1,72 @@
+# === Node / package managers ===
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+.bun/
+bun.lockb
+
+# Evitar backups accidentales de package.json
+package.bak.json
+
+# === Builds / caches ===
+dist/
+build/
+.out/
+.vite/
+node_modules/.vite/
+.tmp/
+.temp/
+.cache/
+.swc/
+
+# === Tests / cobertura ===
+coverage/
+.nyc_output/
+junit*.xml
+test-results/
+
+# === Sourcemaps locales opcionales ===
+*.map
+
+# === TypeScript (si aplicara) ===
+*.tsbuildinfo
+
+# === Lint / format caches ===
+.eslintcache
+.stylelintcache
+
+# === Entornos ===
+# Mantén solo .env.example en el repo
+.env
+.env.*
+!.env.example
+
+# === IDEs / SO ===
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+.Spotlight-V100
+.Trashes
+
+# === Logs ===
+logs/
+*.log
+*.log.*
+
+# === Frameworks opcionales (por si reutilizas el repo) ===
+.next/
+out/
+storybook-static/
+.expo/
+.expo-shared/
