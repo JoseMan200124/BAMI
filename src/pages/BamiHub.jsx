@@ -16,12 +16,27 @@ export default function BamiHub() {
     const [showOps, setShowOps] = useState(false)
     const [showForm, setShowForm] = useState(false)
 
+    // Desactivar globalmente el chat flotante (por si alguien monta otro BamiChatWidget en modo 'floating')
+    useEffect(() => {
+        window.__BAMI_DISABLE_FLOATING__ = true
+        return () => { delete window.__BAMI_DISABLE_FLOATING__ }
+    }, [])
+
+    // Altura segura en móviles
+    useEffect(() => {
+        const setVH = () =>
+            document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`)
+        setVH()
+        window.addEventListener('resize', setVH)
+        return () => window.removeEventListener('resize', setVH)
+    }, [])
+
     useEffect(() => {
         const onU = (e) => setC(e.detail)
         const onTrackerOpen = () => setShowTracker(true)
-        const onTrackerToggle = () => setShowTracker(v => !v)
+        const onTrackerToggle = () => setShowTracker((v) => !v)
         const onOpsOpen = () => setShowOps(true)
-        const onOpsToggle = () => setShowOps(v => !v)
+        const onOpsToggle = () => setShowOps((v) => !v)
         const onFormOpen = () => setShowForm(true)
 
         window.addEventListener('bami:caseUpdate', onU)
@@ -46,37 +61,49 @@ export default function BamiHub() {
         setC(cc)
         setShowTracker(true)
     }
+    const reopen = async () => {
+        const prevApplicant = getCase()?.applicant || null
+        const cc = await createNewCase(product, prevApplicant)
+        notify('Proceso reabierto')
+        setC(cc)
+        // no abrimos chat automáticamente; mostramos el tracker para continuar
+        setShowTracker(true)
+    }
     const emit = (name) => window.dispatchEvent(new Event(name))
 
     const nextCTA = useMemo(() => {
         if (!c) return { label: 'Crear expediente', action: () => start() }
-        if ((c.missing || []).length > 0) return {
-            label: `Subir ${c.missing.length} documento(s)`,
-            action: () => { emit('bami:open'); emit('bami:upload') }
-        }
-        if (c.stage !== 'aprobado') return {
-            label: 'Validar con IA',
-            action: () => { emit('bami:open'); emit('bami:validate') }
-        }
+        if ((c.missing || []).length > 0)
+            return {
+                label: `Subir ${c.missing.length} documento(s)`,
+                action: () => { emit('bami:open'); emit('bami:upload') }
+            }
+        if (c.stage !== 'aprobado')
+            return {
+                label: 'Validar con IA',
+                action: () => { emit('bami:open'); emit('bami:validate') }
+            }
         return { label: 'Hablar con asesor', action: () => { emit('bami:open'); emit('bami:advisor') } }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [c, product])
 
     return (
         <main className="min-h-screen bg-neutral-50 flex flex-col">
-            {/* Topbar (ligero) */}
-            <header className="sticky top-0 z-[60] backdrop-blur bg-white/80 border-b">
-                <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                        <div className="text-lg font-extrabold tracking-tight">BAMI · Demo</div>
-                        <div className="hidden md:flex items-center gap-2">
+            {/* Topbar compacto y adaptable */}
+            <header className="sticky top-0 z-[60] backdrop-blur bg-white/85 border-b">
+                <div className="max-w-7xl mx-auto px-3 sm:px-4 h-16 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <div className="text-base sm:text-lg font-extrabold tracking-tight truncate">BAMI · Demo</div>
+
+                        {/* Selector de producto visible >= sm; en móvil va a la barra de abajo */}
+                        <div className="hidden sm:flex items-center gap-2">
                             <select
                                 className="border rounded-xl px-3 py-1.5 text-sm"
                                 value={product}
                                 onChange={(e) => setProduct(e.target.value)}
                                 aria-label="Producto"
                             >
-                                {Object.keys(PRODUCT_RULES).map(p => (
+                                {Object.keys(PRODUCT_RULES).map((p) => (
                                     <option key={p} value={p}>{p}</option>
                                 ))}
                             </select>
@@ -84,34 +111,67 @@ export default function BamiHub() {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                        <button className="btn h-9" onClick={() => setShowForm(true)}>Completar datos</button>
-                        <button className="btn h-9" onClick={() => setShowTracker(v => !v)}>Tracker</button>
-                        <button className="btn h-9" onClick={() => setShowOps(v => !v)}>Ops</button>
-                        <button className="btn btn-dark h-9" onClick={nextCTA.action}>{nextCTA.label}</button>
+                    <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                        <button className="btn h-9 px-3" onClick={() => setShowForm(true)} aria-label="Completar datos">
+                            <span className="hidden sm:inline">Completar datos</span>
+                            <span className="sm:hidden">Datos</span>
+                        </button>
+
+                        {/* Abrir siempre el Tracker (no toggle) */}
+                        <button className="btn h-9 px-3" onClick={() => setShowTracker(true)} aria-label="Tracker">
+                            Tracker
+                        </button>
+
+                        <button className="btn h-9 px-3" onClick={() => setShowOps((v) => !v)} aria-label="Panel Operaciones">
+                            Ops
+                        </button>
+
+                        {/* Nuevo: Reabrir proceso */}
+                        <button className="btn h-9 px-3" onClick={reopen} aria-label="Reabrir proceso">
+                            Reabrir
+                        </button>
+
+                        <button className="btn btn-dark h-9 px-3" onClick={nextCTA.action}>
+                            <span className="hidden sm:inline">{nextCTA.label}</span>
+                            <span className="sm:hidden">Continuar</span>
+                        </button>
                     </div>
                 </div>
 
-                {/* Siguiente paso (barra de ayuda) */}
-                <div className="border-t bg-yellow-50/60">
-                    <div className="max-w-7xl mx-auto px-4 py-2 text-sm flex items-center justify-between gap-3">
+                {/* Siguiente paso (barra de ayuda). En móvil incluye selector de producto */}
+                <div className="border-t bg-yellow-50/70">
+                    <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 text-sm flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div className="text-gray-700">
                             <span className="text-xs text-gray-600 mr-2">Siguiente paso</span>
                             <b>Te recomendamos: {nextCTA.label}</b>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <button className="btn btn-dark btn-sm" onClick={nextCTA.action}>Continuar</button>
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                            <div className="flex sm:hidden grow">
+                                <select
+                                    className="border rounded-xl px-3 py-1.5 text-sm w-full"
+                                    value={product}
+                                    onChange={(e) => setProduct(e.target.value)}
+                                    aria-label="Producto"
+                                >
+                                    {Object.keys(PRODUCT_RULES).map((p) => (
+                                        <option key={p} value={p}>{p}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <button className="btn btn-dark btn-sm shrink-0" onClick={nextCTA.action}>
+                                Continuar
+                            </button>
                         </div>
                     </div>
                 </div>
             </header>
 
-            {/* Área principal: Chat a pantalla completa */}
+            {/* Área principal: Chat fullscreen */}
             <section className="flex-1">
-                <div className="max-w-7xl mx-auto px-0 md:px-4 py-4 md:py-6">
-                    <div className="rounded-none md:rounded-2xl border md:shadow-sm overflow-hidden">
-                        {/* El chat ocupa casi todo el alto de la vista */}
-                        <BamiChatWidget variant="fullscreen" />
+                <div className="max-w-7xl mx-auto px-0 sm:px-4 py-3 sm:py-6">
+                    <div className="rounded-none sm:rounded-2xl border sm:shadow-sm overflow-hidden">
+                        {/* Desactivamos chat flotante desde aquí con la prop */}
+                        <BamiChatWidget variant="fullscreen" disableFloatingTrigger />
                     </div>
                 </div>
             </section>
@@ -120,13 +180,13 @@ export default function BamiHub() {
             {showTracker && (
                 <div className="fixed inset-0 z-[70]">
                     <div className="absolute inset-0 bg-black/40" onClick={() => setShowTracker(false)} />
-                    <div className="absolute left-1/2 -translate-x-1/2 top-4 w-[95vw] max-w-5xl">
+                    <div className="absolute left-1/2 -translate-x-1/2 top-2 sm:top-4 w-[96vw] max-w-5xl">
                         <div className="card border shadow-2xl rounded-2xl overflow-hidden">
-                            <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b">
+                            <div className="flex items-center justify-between px-3 sm:px-4 py-2 bg-gray-50 border-b">
                                 <div className="text-sm font-semibold">Seguimiento del expediente</div>
                                 <button className="btn" onClick={() => setShowTracker(false)}>Cerrar</button>
                             </div>
-                            <div className="p-4">
+                            <div className="p-3 sm:p-4">
                                 <CaseTracker />
                             </div>
                         </div>
@@ -138,12 +198,12 @@ export default function BamiHub() {
             {showOps && (
                 <div className="fixed inset-0 z-[70]">
                     <div className="absolute inset-0 bg-black/40" onClick={() => setShowOps(false)} />
-                    <aside className="absolute right-0 top-0 h-full w-[92vw] sm:w-[560px] bg-white border-l shadow-2xl">
-                        <div className="flex items-center justify-between px-4 h-12 border-b bg-gray-50">
+                    <aside className="absolute right-0 top-0 h-full w-[96vw] sm:w-[560px] bg-white border-l shadow-2xl">
+                        <div className="flex items-center justify-between px-3 sm:px-4 h-12 border-b bg-gray-50">
                             <div className="text-sm font-semibold">Panel de análisis y leads</div>
                             <button className="btn" onClick={() => setShowOps(false)}>Cerrar</button>
                         </div>
-                        <div className="p-4 overflow-auto h-[calc(100%-48px)]">
+                        <div className="p-3 sm:p-4 overflow-auto h-[calc(100%-48px)]">
                             <BamOpsPanel />
                         </div>
                     </aside>
@@ -152,7 +212,7 @@ export default function BamiHub() {
 
             {/* ——— Modal de datos del solicitante ——— */}
             {showForm && (
-                <div className="fixed inset-0 z-[70] grid place-items-center p-4">
+                <div className="fixed inset-0 z-[70] grid place-items-center p-3 sm:p-4">
                     <div className="absolute inset-0 bg-black/40" onClick={() => setShowForm(false)} />
                     <div className="card w-full max-w-3xl relative z-[71]">
                         <div className="flex items-center justify-between mb-2">

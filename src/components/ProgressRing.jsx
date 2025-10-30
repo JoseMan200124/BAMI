@@ -8,7 +8,7 @@ export default function ProgressRing({ size = 72, stroke = 8, value = 0, label =
     const dash = (pct / 100) * c
     return (
         <div className="relative inline-block" style={{ width: size, height: size }}>
-            <svg width={size} height={size}>
+            <svg width={size} height={size} role="img" aria-label={`Progreso ${pct}%`}>
                 <circle cx={size / 2} cy={size / 2} r={r} stroke="#eee" strokeWidth={stroke} fill="none" />
                 <circle
                     cx={size / 2}
