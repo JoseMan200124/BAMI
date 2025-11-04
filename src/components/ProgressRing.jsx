@@ -23,7 +23,9 @@ export default function ProgressRing({ size = 72, stroke = 8, value = 0, label =
                     transform={`rotate(-90 ${size / 2} ${size / 2})`}
                 />
             </svg>
-            <div className="absolute inset-0 grid place-items-center text-xs font-semibold">{label || `${pct}%`}</div>
+            <div className="absolute inset-0 grid place-items-center text-xs font-semibold">
+                {label || `${pct}%`}
+            </div>
         </div>
     )
 }

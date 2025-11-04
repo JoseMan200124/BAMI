@@ -70,10 +70,13 @@ export async function uploadDocsBackend(docs) {
     return updated
 }
 
-export async function refreshTracker() {
+// ⬇️ Ahora acepta {signal} para que el poller global pueda abortar limpísimo
+export async function refreshTracker(opts = {}) {
+    const { signal } = opts || {}
     const c = getCase()
     if (!c) return null
-    const res = await api.getTracker(c.id)
+    // Si tu api.getTracker no acepta segundo arg, lo ignora sin romper.
+    const res = await api.getTracker(c.id, { signal })
     const nc = normalizeCase(res.case)
     return setCase(nc)
 }

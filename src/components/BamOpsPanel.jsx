@@ -66,7 +66,10 @@ export default function BamOpsPanel() {
     return (
         <div className="card">
             <div className="text-xs text-gray-500 mb-1">Equipo BAM</div>
-            <h3 className="h3 mb-2">Panel de análisis y leads</h3>
+            <h3 className="h3 mb-2 flex items-center gap-2">
+                <img src="/BAMI.svg" alt="BAMI" className="w-5 h-5 rounded-full" />
+                <span>Panel de análisis y leads</span>
+            </h3>
             {!logged ? (
                 <form onSubmit={login} className="grid sm:grid-cols-3 gap-3">
                     <input className="border rounded-xl px-3 py-2" value={email} onChange={e => setEmail(e.target.value)} placeholder="Correo" />
@@ -83,7 +86,7 @@ export default function BamOpsPanel() {
                     </div>
 
                     {/* KPIs */}
-                    <div className="grid sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-4">
                         <Card title="Leads totales" value={data?.totals?.cases ?? 0} />
                         <Card title="Aprobados" value={data?.totals?.aprobados ?? 0} hint={`Tasa ${(data?.totals?.approval_rate*100||0).toFixed(0)}%`} />
                         <Card title="Alternativa" value={data?.totals?.alternativas ?? 0} />
@@ -116,7 +119,7 @@ export default function BamOpsPanel() {
                     {/* Por producto */}
                     <div className="mt-6 p-4 bg-gray-50 rounded-xl">
                         <div className="font-semibold mb-2">Leads por producto</div>
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                             {Object.entries(data?.by_product || {}).map(([p, n]) => (
                                 <div key={p} className="p-3 rounded-xl border bg-white">
                                     <div className="text-xs text-gray-500">{p}</div>
@@ -130,8 +133,8 @@ export default function BamOpsPanel() {
                     {/* Leads recientes */}
                     <div className="mt-6">
                         <div className="font-semibold mb-2">Leads recientes</div>
-                        <div className="overflow-auto">
-                            <table className="min-w-full text-sm">
+                        <div className="overflow-auto -mx-2 sm:mx-0">
+                            <table className="min-w-[620px] sm:min-w-full text-sm mx-2 sm:mx-0">
                                 <thead>
                                 <tr className="text-left text-gray-500">
                                     <th className="py-2 pr-3">ID</th>

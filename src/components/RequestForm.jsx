@@ -40,8 +40,9 @@ export default function RequestForm({ product, onCreated }) {
         notify('Datos recibidos. Requisitos generados según producto.')
 
         setTimeout(() => {
-            window.dispatchEvent(new Event('bami:open'))
-            window.dispatchEvent(new Event('bami:upload'))
+            // eventos de UI (no simulador)
+            window.dispatchEvent(new Event('ui:open'))
+            window.dispatchEvent(new Event('ui:upload'))
             window.dispatchEvent(new Event('ui:tracker:open'))
         }, 150)
 
@@ -52,38 +53,38 @@ export default function RequestForm({ product, onCreated }) {
         <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
             <div>
                 <label className="text-sm">Nombre completo</label>
-                <input className="w-full border rounded-xl px-3 py-2" name="name" value={form.name} onChange={onChange} />
+                <input className="w-full border rounded-xl px-3 py-2 text-base" name="name" value={form.name} onChange={onChange} autoComplete="name" />
                 {errors.name && <div className="text-xs text-red-600 mt-1">{errors.name}</div>}
             </div>
             <div>
                 <label className="text-sm">DPI</label>
-                <input className="w-full border rounded-xl px-3 py-2" name="dpi" value={form.dpi} onChange={onChange} inputMode="numeric" />
+                <input className="w-full border rounded-xl px-3 py-2 text-base" name="dpi" value={form.dpi} onChange={onChange} inputMode="numeric" autoComplete="off" />
                 {errors.dpi && <div className="text-xs text-red-600 mt-1">{errors.dpi}</div>}
             </div>
             <div>
                 <label className="text-sm">Teléfono</label>
-                <input className="w-full border rounded-xl px-3 py-2" name="phone" value={form.phone} onChange={onChange} type="tel" inputMode="tel" />
+                <input className="w-full border rounded-xl px-3 py-2 text-base" name="phone" value={form.phone} onChange={onChange} type="tel" inputMode="tel" autoComplete="tel" />
                 {errors.phone && <div className="text-xs text-red-600 mt-1">{errors.phone}</div>}
             </div>
             <div>
                 <label className="text-sm">Email</label>
-                <input className="w-full border rounded-xl px-3 py-2" name="email" value={form.email} onChange={onChange} type="email" inputMode="email" />
+                <input className="w-full border rounded-xl px-3 py-2 text-base" name="email" value={form.email} onChange={onChange} type="email" inputMode="email" autoComplete="email" />
                 {errors.email && <div className="text-xs text-red-600 mt-1">{errors.email}</div>}
             </div>
             <div>
                 <label className="text-sm">Ingresos mensuales (Q)</label>
-                <input className="w-full border rounded-xl px-3 py-2" name="income" value={form.income} onChange={onChange} type="number" inputMode="numeric" />
+                <input className="w-full border rounded-xl px-3 py-2 text-base" name="income" value={form.income} onChange={onChange} type="number" inputMode="numeric" />
                 {errors.income && <div className="text-xs text-red-600 mt-1">{errors.income}</div>}
             </div>
             <div>
                 <label className="text-sm">Dirección</label>
-                <input className="w-full border rounded-xl px-3 py-2" name="address" value={form.address} onChange={onChange} />
+                <input className="w-full border rounded-xl px-3 py-2 text-base" name="address" value={form.address} onChange={onChange} autoComplete="street-address" />
                 {errors.address && <div className="text-xs text-red-600 mt-1">{errors.address}</div>}
             </div>
             {p === 'PyME' && (
                 <div className="md:col-span-2">
                     <label className="text-sm">Nombre del negocio (PyME)</label>
-                    <input className="w-full border rounded-xl px-3 py-2" name="businessName" value={form.businessName} onChange={onChange} />
+                    <input className="w-full border rounded-xl px-3 py-2 text-base" name="businessName" value={form.businessName} onChange={onChange} />
                 </div>
             )}
 

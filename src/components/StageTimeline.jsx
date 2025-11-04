@@ -13,21 +13,15 @@ export const STAGES = [
 export default function StageTimeline({ stage = 'requiere', history = [], timeline = [] }) {
     const idx = STAGES.findIndex((s) => s.key === stage)
     const items = (timeline.length ? timeline.map(t => ({ at: t.ts, stage: t.type, note: t.text })) : history)
-
-    // Barra: porcentaje según posición
     const widthPct = Math.max(0, idx) / (STAGES.length - 1) * 100
 
     return (
         <div className="w-full">
             <div className="relative">
-                {/* Carril de progreso */}
                 <div className="absolute left-0 right-0 top-6 h-1 bg-gray-200 rounded-full"></div>
-                <div
-                    className="absolute left-0 top-6 h-1 bg-bami-yellow rounded-full transition-all"
-                    style={{ width: `${widthPct}%` }}
-                />
+                <div className="absolute left-0 top-6 h-1 bg-bami-yellow rounded-full transition-all" style={{ width: `${widthPct}%` }} />
 
-                {/* Pasos: en móvil, lista horizontal desplazable */}
+                {/* Mobile: lista horizontal desplazable */}
                 <div className="overflow-x-auto no-scrollbar">
                     <div className="min-w-max flex gap-3 sm:grid sm:grid-cols-5 sm:gap-2 pr-2">
                         {STAGES.map((s, i) => {
@@ -60,7 +54,7 @@ export default function StageTimeline({ stage = 'requiere', history = [], timeli
                 <div className="flex items-center gap-2 font-medium">
                     <Clock size={14} /> Línea de tiempo
                 </div>
-                <ul className="mt-2 max-h-28 overflow-auto pr-1">
+                <ul className="mt-2 max-h-36 sm:max-h-44 overflow-auto pr-1">
                     {items?.slice().reverse().map((h, i) => (
                         <li key={i} className="py-1 border-t first:border-t-0">
                             {new Date(h.at).toLocaleString()} · <span className="font-semibold">{h.stage}</span>{' '}

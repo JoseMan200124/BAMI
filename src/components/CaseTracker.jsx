@@ -4,7 +4,66 @@ import { getCase, refreshTracker } from '../lib/caseStore.js'
 import StageTimeline from './StageTimeline.jsx'
 import ProgressRing from './ProgressRing.jsx'
 
-export default function CaseTracker() {
+/**
+ * Polling GLOBAL único para el tracker:
+ * - Solo 1 request en vuelo (de-dupe entre múltiples CaseTracker montados).
+ * - Backoff exponencial (1.5s → 15s) cuando falla.
+ * - AbortController al desmontar el último suscriptor.
+ */
+function useGlobalTrackerPolling(active = true) {
+    useEffect(() => {
+        if (!active) return
+
+        const g = (window.__BAMI_TRACKER_POLL ||= {
+            subs: 0,
+            inFlight: false,
+            backoff: 1500,
+            maxBackoff: 15000,
+            timer: null,
+            controller: null,
+        })
+
+        g.subs++
+
+        const schedule = () => {
+            if (g.subs <= 0) return
+            clearTimeout(g.timer)
+            g.timer = setTimeout(async () => {
+                if (g.subs <= 0) return
+                if (g.inFlight) { schedule(); return } // de-dupe si otro tick ya va en vuelo
+                g.inFlight = true
+                g.controller?.abort()
+                g.controller = new AbortController()
+                try {
+                    // No lanzar: si el backend devuelve error, el caller lo maneja arriba.
+                    await refreshTracker({ signal: g.controller.signal })
+                    g.backoff = 1500
+                } catch {
+                    g.backoff = Math.min(g.backoff * 1.7, g.maxBackoff)
+                } finally {
+                    g.inFlight = false
+                    schedule()
+                }
+            }, g.backoff)
+        }
+
+        if (!g.timer) schedule()
+
+        return () => {
+            g.subs = Math.max(0, g.subs - 1)
+            if (g.subs === 0) {
+                clearTimeout(g.timer); g.timer = null
+                g.controller?.abort(); g.controller = null
+                g.inFlight = false
+                g.backoff = 1500
+            }
+        }
+    }, [active])
+}
+
+export default function CaseTracker({ active = true }) {
+    useGlobalTrackerPolling(active)
+
     const [c, setC] = useState(getCase())
 
     useEffect(() => {
@@ -13,20 +72,13 @@ export default function CaseTracker() {
         return () => window.removeEventListener('bami:caseUpdate', onU)
     }, [])
 
-    useEffect(() => {
-        let t
-        const tick = async () => {
-            if (getCase()) await refreshTracker()
-            t = setTimeout(tick, 4000)
-        }
-        tick()
-        return () => clearTimeout(t)
-    }, [])
-
     if (!c) {
         return (
             <div className="card">
-                <div className="text-gray-700 font-semibold mb-1">Aún no hay expediente.</div>
+                <div className="flex items-center gap-2 mb-1">
+                    <img src="/BAMI.svg" alt="BAMI" className="w-5 h-5 rounded-full" />
+                    <div className="text-gray-700 font-semibold">Aún no hay expediente.</div>
+                </div>
                 <div className="text-sm text-gray-600">
                     Inicia en la sección BAMI y verás aquí todo el progreso.
                 </div>
@@ -44,7 +96,9 @@ export default function CaseTracker() {
             <div className="flex items-start justify-between gap-3 sm:gap-4">
                 <div className="min-w-0">
                     <div className="text-xs text-gray-500">Expediente</div>
-                    <div className="font-bold text-base sm:text-lg truncate">{c.id} · {c.product}</div>
+                    <div className="font-bold text-base sm:text-lg truncate">
+                        {c.id} · {c.product}
+                    </div>
                     <div className="text-xs sm:text-sm text-gray-600">
                         Canal: <b className="uppercase">{c.channel}</b> · Owner: <b>{c.owner}</b>
                     </div>
@@ -70,7 +124,9 @@ export default function CaseTracker() {
                             ))}
                         </div>
                     ) : (
-                        <div className="text-sm text-emerald-700">No hay faltantes. ¡Podemos pasar a revisión!</div>
+                        <div className="text-sm text-emerald-700">
+                            No hay faltantes. ¡Podemos pasar a revisión!
+                        </div>
                     )}
                 </div>
 
