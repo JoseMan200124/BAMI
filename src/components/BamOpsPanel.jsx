@@ -196,20 +196,15 @@ export default function BamOpsPanel() {
                         <button className="btn" onClick={logout}>Cerrar sesión</button>
                     </div>
 
-                    {/* =================== Indicadores clave: Responsive =================== */}
+                    {/* =================== Indicadores clave (robusto y responsive) =================== */}
                     <div className="mt-4">
                         <div className="text-xs text-gray-500 mb-1">Indicadores clave</div>
 
-                        {/* En móviles: carrusel horizontal; en ≥sm: grilla */}
-                        <div className="
-              grid gap-3 no-scrollbar
-              grid-flow-col auto-cols-[minmax(240px,1fr)] overflow-x-auto
-              sm:grid-flow-row sm:auto-cols-auto sm:overflow-visible
-              sm:grid-cols-2 lg:grid-cols-4
-            ">
+                        {/* Móvil: carrusel horizontal con tarjetas de 260px */}
+                        <div className="flex gap-3 overflow-x-auto sm:hidden no-scrollbar pb-1">
                             {/* Tiempo promedio */}
-                            <div className="min-w-[240px]">
-                                <div className="p-4 rounded-2xl border bg-white min-h-[124px] flex flex-col justify-between">
+                            <div className="min-w-[260px]">
+                                <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col justify-between">
                                     <div className="flex items-center justify-between">
                                         <div className="text-xs text-gray-500">Tiempo prom. de atención</div>
                                         <Clock size={16} className="text-gray-400" />
@@ -223,9 +218,9 @@ export default function BamOpsPanel() {
                                 </div>
                             </div>
 
-                            {/* % Atendidos vs Generados */}
-                            <div className="min-w-[240px]">
-                                <div className="p-4 rounded-2xl border bg-white min-h-[124px] flex items-center gap-3">
+                            {/* % Atendidos */}
+                            <div className="min-w-[260px]">
+                                <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex items-center gap-3">
                                     <div className="shrink-0">
                                         <ProgressRing size={64} stroke={8} value={atendidosPct} label={`${atendidosPct}%`} />
                                     </div>
@@ -243,8 +238,8 @@ export default function BamOpsPanel() {
                             </div>
 
                             {/* Distribución por etapa */}
-                            <div className="min-w-[240px]">
-                                <div className="p-4 rounded-2xl border bg-white min-h-[124px] flex flex-col">
+                            <div className="min-w-[260px]">
+                                <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col">
                                     <div className="flex items-center justify-between">
                                         <div className="text-xs text-gray-500">Distribución por etapa</div>
                                         <BarChart3 size={16} className="text-gray-400" />
@@ -255,9 +250,9 @@ export default function BamOpsPanel() {
                                 </div>
                             </div>
 
-                            {/* Satisfacción del cliente */}
-                            <div className="min-w-[240px]">
-                                <div className="p-4 rounded-2xl border bg-white min-h-[124px] flex flex-col justify-between">
+                            {/* Satisfacción */}
+                            <div className="min-w-[260px]">
+                                <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col justify-between">
                                     <div className="flex items-center justify-between">
                                         <div className="text-xs text-gray-500">Satisfacción del cliente</div>
                                         <TrendingUp size={16} className="text-gray-400" />
@@ -267,6 +262,69 @@ export default function BamOpsPanel() {
                                         <div className="text-lg font-bold">{csatAvg == null ? '—' : csatAvg.toFixed(1)}</div>
                                     </div>
                                     <div className="text-xs text-gray-500">{csatAvg == null ? 'Conecta tu encuesta post-atención' : `${csatN} respuestas`}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* ≥ sm: auto-fit minmax(260px,1fr) → se envuelve si no cabe en una sola fila */}
+                        <div
+                            className="hidden sm:grid gap-3"
+                            style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}
+                        >
+                            {/* Tiempo promedio */}
+                            <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col justify-between">
+                                <div className="flex items-center justify-between">
+                                    <div className="text-xs text-gray-500">Tiempo prom. de atención</div>
+                                    <Clock size={16} className="text-gray-400" />
+                                </div>
+                                <div>
+                                    <div className="text-2xl font-bold">{fmtMinutesToHM(avgMinutes)}</div>
+                                    <div className="text-xs text-gray-500 mt-1">
+                                        {avgMinutes == null ? 'Aún sin datos' : 'Desde primer contacto hasta primera atención'}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* % Atendidos */}
+                            <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex items-center gap-3">
+                                <div className="shrink-0">
+                                    <ProgressRing size={64} stroke={8} value={atendidosPct} label={`${atendidosPct}%`} />
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-xs text-gray-500 flex items-center justify-between">
+                                        <span>% Atendidos vs Generados</span>
+                                        <CheckCircle2 size={16} className="text-gray-400" />
+                                    </div>
+                                    <div className="text-sm font-semibold mt-1 truncate">
+                                        {atendidos}/{totalLeads} atendidos
+                                    </div>
+                                    <div className="text-xs text-gray-500 truncate">Leads que ya entraron al flujo</div>
+                                </div>
+                            </div>
+
+                            {/* Distribución por etapa */}
+                            <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col">
+                                <div className="flex items-center justify-between">
+                                    <div className="text-xs text-gray-500">Distribución por etapa</div>
+                                    <BarChart3 size={16} className="text-gray-400" />
+                                </div>
+                                <div className="mt-2">
+                                    <StackedBar segments={stageSegments} />
+                                </div>
+                            </div>
+
+                            {/* Satisfacción */}
+                            <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col justify-between">
+                                <div className="flex items-center justify-between">
+                                    <div className="text-xs text-gray-500">Satisfacción del cliente</div>
+                                    <TrendingUp size={16} className="text-gray-400" />
+                                </div>
+                                <div className="flex items-center gap-3 mt-1">
+                                    <Stars value={csatAvg || 0} />
+                                    <div className="text-lg font-bold">{csatAvg == null ? '—' : csatAvg.toFixed(1)}</div>
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                    {csatAvg == null ? 'Conecta tu encuesta post-atención' : `${csatN} respuestas`}
                                 </div>
                             </div>
                         </div>
