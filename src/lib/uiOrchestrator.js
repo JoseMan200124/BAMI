@@ -1,66 +1,16 @@
 // src/lib/uiOrchestrator.js
-// Orquestador del Agente con CURSOR CIRCULAR controlado por Autopilot.
-// - El cursor circular está OCULTO por defecto.
-// - Se muestra únicamente al recibir `bami:agent:start` y oculta el cursor nativo.
-// - Se vuelve a ocultar con `bami:agent:stop`.
-// - Mantiene la lógica para abrir/“clavar” el Tracker y disparar la simulación.
-// - Incluye utilidades de movimiento y animación de click (opcional) para futuros pasos.
+// Orquestador del Agente SIN cursor circular y SIN ocultar el cursor nativo.
+// - Se eliminó el círculo celeste por completo.
+// - Nunca se oculta el cursor real del sistema.
+// - El Tracker se abre durante el flujo (si aplica) y se CIERRA al finalizar,
+//   evitando que se reabra automáticamente (se desactiva el lock antes de cerrarlo).
 
 (function () {
     if (window.__BAMI_UI_ORCH_READY__) return
     window.__BAMI_UI_ORCH_READY__ = true
 
     // -------------------------------------------------------
-    // Estilos inyectados (cursor circular + ocultar cursor nativo)
-    // -------------------------------------------------------
-    const STYLE_ID = 'bami-ui-orchestrator-styles'
-    if (!document.getElementById(STYLE_ID)) {
-        const st = document.createElement('style')
-        st.id = STYLE_ID
-        st.textContent = `
-      .bami-hide-native-cursor, .bami-hide-native-cursor * {
-        cursor: none !important;
-      }
-      #bami-circle-cursor {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 28px;
-        height: 28px;
-        border-radius: 9999px;
-        border: 2px solid var(--bami-cursor-color, #06b6d4); /* cian */
-        box-shadow: 0 0 0 1px rgba(0,0,0,.06);
-        transform: translate(-9999px, -9999px);
-        pointer-events: none;
-        opacity: 0;
-        z-index: 2147483647; /* por encima de todo */
-        transition:
-          opacity 160ms ease,
-          transform 180ms cubic-bezier(.22,.61,.36,1);
-      }
-      #bami-circle-cursor.is-visible {
-        opacity: 1;
-      }
-      #bami-circle-cursor::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        border-radius: 9999px;
-        transform: scale(1);
-        opacity: 0;
-        border: 6px solid var(--bami-cursor-color, #06b6d4);
-        transition: transform 280ms ease, opacity 280ms ease;
-      }
-      #bami-circle-cursor.is-clicking::after {
-        transform: scale(1.6);
-        opacity: .35;
-      }
-    `
-        document.head.appendChild(st)
-    }
-
-    // -------------------------------------------------------
-    // Estado y utilidades básicas
+    // Utilidades
     // -------------------------------------------------------
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
     const norm = (t) => (t || '').toLowerCase().replace(/\s+/g, ' ').trim()
@@ -71,16 +21,6 @@
         if (r.width <= 0 || r.height <= 0) return false
         const cs = getComputedStyle(el)
         return cs.visibility !== 'hidden' && cs.display !== 'none' && cs.opacity !== '0'
-    }
-
-    const inViewport = (el) => {
-        const r = el.getBoundingClientRect()
-        return (
-            r.top >= 0 &&
-            r.left >= 0 &&
-            r.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
-            r.right <= (window.innerWidth || document.documentElement.clientWidth)
-        )
     }
 
     const qAllClickables = () =>
@@ -116,63 +56,37 @@
     }
 
     // -------------------------------------------------------
-    // CURSOR CIRCULAR (oculto por defecto, visible en Autopilot)
+    // (Sin cursor circular) — helpers de click/posicion opcionales
     // -------------------------------------------------------
-    const cursorEl = document.createElement('div')
-    cursorEl.id = 'bami-circle-cursor'
-    document.body.appendChild(cursorEl)
-
-    let cursorVisible = false
     let lastMouse = { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) }
+    window.addEventListener(
+        'mousemove',
+        (e) => {
+            lastMouse = { x: e.clientX, y: e.clientY }
+        },
+        { passive: true }
+    )
 
-    // Guardamos posición del mouse (para colocar el cursor circular al activarlo)
-    window.addEventListener('mousemove', (e) => {
-        lastMouse = { x: e.clientX, y: e.clientY }
-    }, { passive: true })
-
-    function showCircleCursor(on) {
-        cursorVisible = !!on
-        if (cursorVisible) {
-            // situar en la última posición conocida del mouse
-            setCursorPosition(lastMouse.x, lastMouse.y)
-            cursorEl.classList.add('is-visible')
-            document.body.classList.add('bami-hide-native-cursor') // ocultar cursor nativo
-        } else {
-            cursorEl.classList.remove('is-visible', 'is-clicking')
-            document.body.classList.remove('bami-hide-native-cursor')
-            // enviar fuera de pantalla para no “parpadear”
-            cursorEl.style.transform = 'translate(-9999px, -9999px)'
-        }
-    }
-
-    function setCursorPosition(x, y) {
-        const size = 28 // px, debe coincidir con CSS
-        cursorEl.style.transform = `translate(${Math.round(x - size / 2)}px, ${Math.round(y - size / 2)}px)`
-    }
-
-    async function moveCursorTo(x, y, duration = 250) {
-        if (!cursorVisible) return
-        // Usamos transición CSS ya declarada
-        setCursorPosition(x, y)
+    async function moveCursorTo(x, y, duration = 200) {
+        // No hay indicador visual; solo esperamos para simular el timing del flujo.
         await sleep(duration)
     }
 
-    function clickAnim() {
-        if (!cursorVisible) return
-        cursorEl.classList.add('is-clicking')
-        // Quitar luego de un pequeño tiempo
-        setTimeout(() => cursorEl.classList.remove('is-clicking'), 220)
-    }
-
     async function clickAt(x, y, targetEl = null) {
-        await moveCursorTo(x, y, 220)
-        clickAnim()
-        // Disparar eventos nativos en el elemento centrado (o en targetEl si se provee)
+        await moveCursorTo(x, y, 160)
         try {
-            const el = targetEl || document.elementFromPoint(x, y)
+            const el = targetEl || document.elementFromPoint(x ?? lastMouse.x, y ?? lastMouse.y)
             if (el) {
                 for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click']) {
-                    el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y }))
+                    el.dispatchEvent(
+                        new MouseEvent(type, {
+                            bubbles: true,
+                            cancelable: true,
+                            view: window,
+                            clientX: x ?? lastMouse.x,
+                            clientY: y ?? lastMouse.y
+                        })
+                    )
                 }
                 el.focus?.()
             }
@@ -190,13 +104,16 @@
             )
         )
         for (const f of floats) {
-            if (tracker && (tracker === f || f.contains(tracker))) continue // no cerrar el tracker ni su contenedor
+            if (tracker && (tracker === f || f.contains(tracker))) continue
             if (!isVisible(f)) continue
             const btn = f.querySelector(
                 '[data-close],[data-dismiss],[aria-label="Cerrar"],[aria-label="Close"],.btn-close,button.close'
             )
             if (btn) {
-                try { btn.click() } catch {}
+                try {
+                    btn.click()
+                    continue
+                } catch {}
             }
             const cs = getComputedStyle(f)
             if (cs.display !== 'none') {
@@ -208,7 +125,7 @@
     }
 
     // -------------------------------------------------------
-    // Abrir y “clavar” el Tracker
+    // Abrir / Cerrar Tracker y “lock” (para evitar reapertura involuntaria)
     // -------------------------------------------------------
     let trackerLock = false
     let trackerObserver = null
@@ -223,6 +140,7 @@
         const root = document.body
         trackerObserver = new MutationObserver(() => {
             if (!trackerLock) return
+            // Si desaparece el tracker estando activo el lock, se intenta reabrir.
             const exists = !!findTrackerContainer()
             if (!exists) {
                 openTracker(true).catch(() => {})
@@ -243,23 +161,56 @@
         const target = btn || tab
 
         if (target) {
-            if (!silent && cursorVisible) {
+            if (!silent) {
                 const r = target.getBoundingClientRect()
                 await clickAt(r.left + r.width / 2, r.top + r.height / 2, target)
             } else {
-                try { target.click?.() } catch {}
+                try {
+                    target.click?.()
+                } catch {}
             }
-            await sleep(220)
+            await sleep(200)
         } else {
-            try { window.dispatchEvent(new Event('bami:ui:openTracker')) } catch {}
-            await sleep(300)
+            try {
+                window.dispatchEvent(new Event('bami:ui:openTracker'))
+            } catch {}
+            await sleep(260)
         }
 
         if (!findTrackerContainer()) {
             const again = findByText(['abrir tracker', 'seguimiento del expediente', 'tracker'])
-            if (again) { try { again.click?.() } catch {}; await sleep(240) }
+            if (again) {
+                try {
+                    again.click?.()
+                } catch {}
+                await sleep(220)
+            }
         }
         return !!findTrackerContainer()
+    }
+
+    async function closeTracker() {
+        const tracker = findTrackerContainer()
+        if (!tracker) return false
+        // Buscar botón de cerrar
+        const closeBtn =
+            tracker.querySelector(
+                '[aria-label="Cerrar"], [aria-label="Close"], [data-close], [data-dismiss], .btn-close, button.close'
+            ) || findByText(['cerrar'])
+        if (closeBtn) {
+            try {
+                closeBtn.click()
+                await sleep(150)
+                return !findTrackerContainer()
+            } catch {}
+        }
+        // Fallback: ocultarlo agresivamente
+        try {
+            tracker.style.setProperty('display', 'none', 'important')
+            tracker.style.setProperty('visibility', 'hidden', 'important')
+        } catch {}
+        await sleep(60)
+        return !findTrackerContainer()
     }
 
     // -------------------------------------------------------
@@ -268,42 +219,41 @@
     async function runAgentScenario() {
         window.__BAMI_AGENT_ACTIVE__ = true
 
-        // Mostrar cursor circular y ocultar cursor nativo SOLO al iniciar Autopilot
-        showCircleCursor(true)
-
-        // 1) Abrir tracker y fijarlo
+        // 1) Abrir tracker y fijarlo durante el flujo (si existe)
         await openTracker(true)
         setTrackerLock(true)
 
-        // 2) Disparar simulación del tracker
+        // 2) Disparar simulación del tracker (avance de etapas)
         for (let i = 0; i < 3; i++) {
-            try { window.dispatchEvent(new Event('bami:sim:runTracker')) } catch {}
-            await sleep(250)
+            try {
+                window.dispatchEvent(new Event('bami:sim:runTracker'))
+            } catch {}
+            await sleep(240)
         }
 
-        // 3) Simulación de “subir documentos”, si existe botón
+        // 3) Simulación de subida de documentos (si existe botón)
         const uploadBtn =
             document.querySelector('[data-bami-upload-sim]') ||
             findByText(['subir documentos (sim)', 'subir documentos', 'simular subida'])
         if (uploadBtn) {
             const r = uploadBtn.getBoundingClientRect()
-            if (cursorVisible) {
-                await clickAt(r.left + r.width / 2, r.top + r.height / 2, uploadBtn)
-            } else {
-                try { uploadBtn.click?.() } catch {}
-            }
-            await sleep(400)
-            try { window.dispatchEvent(new Event('bami:sim:runTracker')) } catch {}
+            await clickAt(r.left + r.width / 2, r.top + r.height / 2, uploadBtn)
+            await sleep(360)
+            try {
+                window.dispatchEvent(new Event('bami:sim:runTracker'))
+            } catch {}
         }
 
-        // (Opcional) puedes ocultar el cursor al terminar el flujo automático:
-        // showCircleCursor(false)
+        // 4) FIN del flujo: desactivar lock y CERRAR tracker (no debe quedar abierto).
+        setTrackerLock(false)
+        await closeTracker()
     }
 
     function stopAgentScenario() {
         window.__BAMI_AGENT_ACTIVE__ = false
+        // Asegurar que no se reabra: primero quitamos lock y luego cerramos.
         setTrackerLock(false)
-        showCircleCursor(false) // ocultar el cursor circular y restaurar el cursor nativo
+        closeTracker()
     }
 
     // -------------------------------------------------------
@@ -311,25 +261,20 @@
     // -------------------------------------------------------
     window.addEventListener('bami:agent:start', runAgentScenario)
     window.addEventListener('bami:agent:stop', stopAgentScenario)
-    window.addEventListener('bami:agent:openTracker', () => { openTracker(true) })
-    window.addEventListener('bami:agent:showTracker', () => { openTracker(true) })
-
-    // Compatibilidad/diagnóstico
-    window.addEventListener('bami:cursor:forceShow', () => showCircleCursor(true))
-    window.addEventListener('bami:cursor:forceHide', () => showCircleCursor(false))
-    window.addEventListener('beforeunload', () => {
-        setTrackerLock(false)
-        showCircleCursor(false)
+    window.addEventListener('bami:agent:openTracker', () => {
+        openTracker(true)
+    })
+    window.addEventListener('bami:agent:showTracker', () => {
+        openTracker(true)
     })
 
     // API útil para consola/desarrollo
     window.BAMI = Object.assign(window.BAMI || {}, {
         openTracker,
+        closeTracker,
         runAgentScenario,
         stopAgentScenario,
-        showCircleCursor,
         moveCursorTo,
-        clickAt,
-        clickAnim
+        clickAt
     })
 })()
