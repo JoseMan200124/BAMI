@@ -81,18 +81,18 @@ export default function BamiHub() {
         notify('Proceso reabierto')
         setC(cc); setShowTracker(true)
     }
+
+    // ⛔ Durante Autopilot NO abrimos el chat; sólo la UI de upload/tracker.
     const openUploadEverywhere = () => {
         const prefix = showMobile ? 'sim' : 'ui'
-        window.dispatchEvent(new Event(`${prefix}:open`))
+        const isAutopilot = typeof window !== 'undefined' && window.__BAMI_AGENT_ACTIVE__ === true
+        if (!isAutopilot) {
+            window.dispatchEvent(new Event(`${prefix}:open`))
+        }
         window.dispatchEvent(new Event(`${prefix}:upload`))
         window.dispatchEvent(new Event('upload:open'))
     }
-    // 🔇 NUEVO: abre el asistente de subida SIN abrir el chat
-    const openUploadSilently = () => {
-        const prefix = showMobile ? 'sim' : 'ui'
-        window.dispatchEvent(new Event(`${prefix}:upload`))
-        window.dispatchEvent(new Event('upload:open'))
-    }
+
     const validateEverywhere = () => {
         const p = showMobile ? 'sim' : 'ui'
         window.dispatchEvent(new Event(`${p}:validate`))
@@ -136,7 +136,8 @@ export default function BamiHub() {
                         </button>
                     </div>
                 </div>
-                <BamiChatWidget variant="fullscreen" disableFloatingTrigger={false} allowOpsButton={false} />
+                {/* 🔒 Evitamos chat flotante de la esquina siempre aquí */}
+                <BamiChatWidget variant="fullscreen" disableFloatingTrigger={true} allowOpsButton={false} />
             </section>
 
             {/* OPS */}
@@ -309,7 +310,8 @@ export default function BamiHub() {
                                     </button>
                                 </div>
                             </div>
-                            <BamiChatWidget variant="fullscreen" disableFloatingTrigger={false} allowOpsButton={false} />
+                            {/* Chat en modo “panel” permanente, sin flotante */}
+                            <BamiChatWidget variant="fullscreen" disableFloatingTrigger={true} allowOpsButton={false} />
                         </section>
                     )}
 
@@ -375,7 +377,7 @@ export default function BamiHub() {
                 </div>
             )}
 
-            {/* === AGENTE BAMI (globo inferior derecho) === */}
+            {/* === AGENTE BAMI (globo inferior derecho con Autopilot) === */}
             <BamiAgent
                 caseData={c}
                 product={product}
@@ -383,8 +385,6 @@ export default function BamiHub() {
                     start,
                     reopen,
                     openUploadEverywhere,
-                    // 👉 clave: versión silenciosa para que Autopilot NO abra el chat
-                    openUploadSilently,
                     validateEverywhere,
                     advisorEverywhere,
                     openTracker: () => setShowTracker(true),

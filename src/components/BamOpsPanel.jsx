@@ -96,64 +96,46 @@ function fmtMinutesToHM(min) {
     return h > 0 ? `${h}h ${mm}m` : `${mm}m`
 }
 
-/* ------------------------------ DEMO fallback ------------------------------ */
+/* ------------------------------ Demo data ------------------------------ */
 function buildDemoData() {
-    const now = Date.now()
-    const mkLead = (i, stage, product, name) => ({
-        id: `LD-${(100000 + i).toString(36).toUpperCase()}`,
-        product,
-        channel: ['web','app','whatsapp','sucursal'][i % 4],
-        applicant: { name },
-        stage,
-        missing_count: stage === 'requiere' ? (1 + (i % 3)) : 0,
-        created_at: new Date(now - i * 3600_000).toISOString(),
-    })
+    // números coherentes y “llenos”
+    const total = 240
+    const recibido = 96
+    const en_revision = 72
+    const aprobado = 52
+    const alternativa = 20
+    const requiere = total - (recibido + en_revision + aprobado + alternativa)
 
-    const leads = [
-        mkLead(1,'aprobado','Tarjeta de Crédito','María López'),
-        mkLead(2,'en_revision','Préstamo Personal','Juan Pérez'),
-        mkLead(3,'recibido','Hipoteca','Sofía Ramírez'),
-        mkLead(4,'alternativa','PyME','Carlos Díaz'),
-        mkLead(5,'aprobado','Tarjeta de Crédito','Ana Fernández'),
-        mkLead(6,'en_revision','Tarjeta de Crédito','Luis Gómez'),
-        mkLead(7,'recibido','Préstamo Personal','Diego Morales'),
-        mkLead(8,'requiere','Hipoteca','Fernanda Soto'),
-        mkLead(9,'en_revision','PyME','Ricardo Castillo'),
-        mkLead(10,'aprobado','Préstamo Personal','Julia Martínez'),
-        mkLead(11,'alternativa','Hipoteca','Santiago Herrera'),
-        mkLead(12,'recibido','PyME','Laura Aguilar'),
-        mkLead(13,'aprobado','Tarjeta de Crédito','Gabriela Chávez'),
-        mkLead(14,'en_revision','Tarjeta de Crédito','Rodrigo León'),
-    ]
-
-    const funnel = {
-        requiere: 128,
-        recibido: 96,
-        en_revision: 56,
-        aprobado: 46,
-        alternativa: 18,
-    }
+    const leads = Array.from({ length: 22 }).map((_, i) => ({
+        id: `L${(1000 + i)}`,
+        product: ['Tarjeta de Crédito', 'Préstamo Personal', 'Hipoteca', 'PyME'][i % 4],
+        channel: ['web', 'app', 'whatsapp', 'sucursal'][i % 4],
+        applicant: { name: ['María','Luis','Karla','Diego','Sofía','Jorge'][i % 6] + ' ' + ['Pérez','Gómez','López','Ramírez'][i % 4] },
+        stage: ['requiere','recibido','en_revision','aprobado','alternativa'][i % 5],
+        missing_count: (i % 3),
+        created_at: Date.now() - i * 3600_000
+    }))
 
     return {
         totals: {
-            cases: 128,
-            aprobados: 46,
-            en_revision: 32,
-            alternativas: 18,
-            approval_rate: 46/128,
-            missing_avg: 1.7,
-            avg_response_minutes: 75,
+            cases: total,
+            aprobados: aprobado,
+            alternativas: alternativa,
+            en_revision,
+            approval_rate: aprobado / Math.max(1, total),
+            missing_avg: 1.2,
+            avg_response_minutes: 48
         },
-        funnel,
-        sla: { avg_minutes: 75 },
-        csat: { avg: 4.6, responses: 83 },
-        leads,
+        funnel: { requiere, recibido, en_revision, aprobado, alternativa },
+        sla: { avg_minutes: 37 },
+        csat: { avg: 4.5, responses: 132 },
         by_product: {
-            'Tarjeta de Crédito': 58,
-            'Préstamo Personal': 30,
-            'Hipoteca': 24,
-            'PyME': 16,
+            'Tarjeta de Crédito': 96,
+            'Préstamo Personal': 72,
+            'Hipoteca': 36,
+            'PyME': 36,
         },
+        leads
     }
 }
 
@@ -162,21 +144,22 @@ export default function BamOpsPanel() {
     // Autologin DEMO: nunca pedimos credenciales
     const [data, setData] = useState(null)
 
-    const fetchOnce = async () => {
+    const fetchDataOnce = async () => {
         try {
-            if (!localStorage.getItem(TOKEN_KEY)) localStorage.setItem(TOKEN_KEY, 'demo')
+            if (!localStorage.getItem(TOKEN_KEY)) {
+                localStorage.setItem(TOKEN_KEY, 'demo')
+            }
             const d = await api.adminAnalytics()
-            // Si el backend devuelve algo válido lo usamos; si no, fallback demo.
-            if (d && (d.totals || d.funnel || d.leads)) setData(d)
-            else setData(buildDemoData())
+            // Si el backend responde bien, úsalo; si no, demo.
+            setData(d && typeof d === 'object' ? d : buildDemoData())
         } catch {
             setData(buildDemoData())
         }
     }
 
     useEffect(() => {
-        // ❗ Se carga SOLO UNA VEZ (sin intervalos)
-        fetchOnce()
+        // Solo una vez para evitar “flicker” y cumplir “mostrar una vez”
+        fetchDataOnce()
     }, [])
 
     // -------- Derivados ----------
@@ -203,13 +186,15 @@ export default function BamOpsPanel() {
         { key: 'alternativa', label: 'Alternativa', value: funnel?.alternativa || 0, color: '#c4b5fd' },
     ]
 
+    const leadsCompact = (data?.leads || []).slice(0, 14)
+
     return (
         <div className="card">
             <div className="text-xs text-gray-500 mb-1">Equipo BAM</div>
             <h3 className="h3 mb-2 flex items-center gap-2">
                 <img src="/BAMI.svg" alt="BAMI" className="w-5 h-5 rounded-full" />
                 <span>Panel de análisis y leads</span>
-                <span className="ml-2 text-xs text-gray-500">(modo demo — snapshot único)</span>
+                <span className="ml-2 text-xs text-gray-500">(demo listo para presentación)</span>
             </h3>
 
             {/* =================== Indicadores clave =================== */}
@@ -430,7 +415,7 @@ export default function BamOpsPanel() {
                             </tr>
                         ))}
                         {!((data?.leads || []).length) && (
-                            <tr><td colSpan="7" className="py-6 text-center text-gray-500">Sin datos (demo).</td></tr>
+                            <tr><td colSpan="7" className="py-6 text-center text-gray-500">Sin datos (modo demo).</td></tr>
                         )}
                         </tbody>
                     </table>
