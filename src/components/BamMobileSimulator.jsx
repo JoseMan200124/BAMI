@@ -11,10 +11,6 @@ import BamOpsPanel from './BamOpsPanel.jsx'
 
 /**
  * Simulador visual de la app móvil BAM.
- * - z-index altos y consistentes (overlay 4000, botón Cerrar 4010, phone 4005)
- * - pointer-events: el centrador NO intercepta; solo el teléfono recibe eventos
- * - body scroll lock mientras está abierto
- * - cuando hay modal interno, el chat queda con pointer-events: none
  */
 const YELLOW = '#FFD400'
 const BG = '#101214'
@@ -58,20 +54,39 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
     useEffect(() => {
         const hOpenTracker = () => setShowTracker(true)
         const hToggleTracker = () => setShowTracker(v => !v)
+        const hCloseTracker = () => {
+            if (window.__BAMI_LOCK_TRACKER__ || window.__BAMI_AGENT_ACTIVE__) return
+            setShowTracker(false)
+        }
         const hOpenOps = () => setShowOps(true)
         const hToggleOps = () => setShowOps(v => !v)
+        const hCloseOps = () => setShowOps(false)
+
+        const hOpenChat = () => { setTab('gestionar'); setScreen('bami-chat') }
+        const hCloseSim = () => onClose?.()
 
         window.addEventListener('sim:tracker:open', hOpenTracker)
         window.addEventListener('sim:tracker:toggle', hToggleTracker)
+        window.addEventListener('sim:tracker:close', hCloseTracker)
         window.addEventListener('sim:ops:open', hOpenOps)
         window.addEventListener('sim:ops:toggle', hToggleOps)
+        window.addEventListener('sim:ops:close', hCloseOps)
+        window.addEventListener('sim:open', hOpenChat)
+        window.addEventListener('bami:open', hOpenChat)
+        window.addEventListener('sim:close', hCloseSim)
+
         return () => {
             window.removeEventListener('sim:tracker:open', hOpenTracker)
             window.removeEventListener('sim:tracker:toggle', hToggleTracker)
+            window.removeEventListener('sim:tracker:close', hCloseTracker)
             window.removeEventListener('sim:ops:open', hOpenOps)
             window.removeEventListener('sim:ops:toggle', hToggleOps)
+            window.removeEventListener('sim:ops:close', hCloseOps)
+            window.removeEventListener('sim:open', hOpenChat)
+            window.removeEventListener('bami:open', hOpenChat)
+            window.removeEventListener('sim:close', hCloseSim)
         }
-    }, [])
+    }, [onClose])
 
     if (!open) return null
 
@@ -240,25 +255,33 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
     )
 
     /** Modales internos (dentro del teléfono) **/
-    const InternalModal = ({ title, onClose, children }) => (
-        <div className="absolute inset-0 z-[45]" style={{ pointerEvents: 'auto' }}>
-            <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-            <div className="absolute left-1/2 -translate-x-1/2 top-4 w-[94%]">
-                <div className="rounded-2xl overflow-hidden"
-                     style={{ backgroundColor: '#ffffff', color: '#111', border: '1px solid #e5e7eb' }}>
-                    <div className="h-12 px-3 flex items-center justify-between border-b bg-gray-50">
-                        <div className="text-sm font-semibold">{title}</div>
-                        <button onClick={onClose} className="p-1.5 rounded hover:bg-gray-200" aria-label="Cerrar">
-                            <X size={16}/>
-                        </button>
-                    </div>
-                    <div className="max-h-[78svh] overflow-auto p-3 sm:p-4">
-                        {children}
+    const InternalModal = ({ title, onClose, children }) => {
+        const safeClose = () => {
+            if (window.__BAMI_LOCK_TRACKER__ || window.__BAMI_AGENT_ACTIVE__) return
+            onClose?.()
+        }
+        return (
+            <div className="absolute inset-0 z-[45]" style={{ pointerEvents: 'auto' }}>
+                <div className="absolute inset-0 bg-black/60" onClick={safeClose} />
+                <div className="absolute left-1/2 -translate-x-1/2 top-4 w-[94%]">
+                    <div
+                        className="rounded-2xl overflow-hidden"
+                        style={{ backgroundColor: '#ffffff', color: '#111', border: '1px solid #e5e7eb' }}
+                    >
+                        <div className="h-12 px-3 flex items-center justify-between border-b bg-gray-50">
+                            <div className="text-sm font-semibold">{title}</div>
+                            <button onClick={safeClose} className="p-1.5 rounded hover:bg-gray-200" aria-label="Cerrar">
+                                <X size={16}/>
+                            </button>
+                        </div>
+                        <div className="max-h-[78svh] overflow-auto p-3 sm:p-4">
+                            {children}
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    )
+        )
+    }
 
     /** Contenido principal **/
     const ScreenContent = () => {
@@ -269,9 +292,9 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
                 <>
                     <AppHeader title="Bam" showBack onBack={() => setScreen('root')} />
                     <div className="relative flex-1 overflow-hidden" style={{ backgroundColor: '#ffffff', color: '#000000' }}>
-                        {/* Chat ocupa 100% del alto disponible del teléfono */}
+                        {/* Chat ocupa 100% del alto del teléfono */}
                         <div className="absolute inset-0" style={{ pointerEvents: modalOpen ? 'none' : 'auto' }}>
-                            <BamiChatWidget variant="fullscreen" disableFloatingTrigger embed />
+                            <BamiChatWidget variant="app" disableFloatingTrigger embed />
                         </div>
 
                         {showTracker && (
@@ -316,9 +339,12 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
 
     return (
         <div className="fixed inset-0 z-[4000] bg-black/55 backdrop-blur-sm" style={{ pointerEvents: 'auto' }}>
-            {/* Botón cerrar (siempre por encima y clickeable) */}
+            {/* Botón cerrar */}
             <button
-                onClick={onClose}
+                onClick={() => {
+                    if (window.__BAMI_LOCK_TRACKER__ || window.__BAMI_AGENT_ACTIVE__) return
+                    onClose()
+                }}
                 className="fixed top-4 right-4 z-[4010] px-3 py-1.5 rounded-lg text-sm bg-white text-black hover:bg-gray-100 shadow"
                 aria-label="Cerrar vista app"
                 style={{ pointerEvents: 'auto' }}
@@ -326,7 +352,7 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
                 Cerrar
             </button>
 
-            {/* Centrador que NO intercepta; el teléfono sí */}
+            {/* Centro */}
             <div className="h-full w-full grid place-items-center p-4 pointer-events-none">
                 <div className="pointer-events-auto">
                     <PhoneShell>
@@ -335,7 +361,7 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
                 </div>
             </div>
 
-            {/* leyenda inferior sin eventos */}
+            {/* leyenda */}
             <div className="absolute bottom-4 left-0 right-0 px-4 text-center text-white/85 text-sm z-[4001] pointer-events-none">
                 Vista simulada de la app BAM — navega por las pestañas y abre “Asistente BAMI”.
             </div>

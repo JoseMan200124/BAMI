@@ -18,7 +18,7 @@ import Toasts from './components/Toasts.jsx'
 
 export default function App(){
     const { pathname } = useLocation()
-    const showFloatingChat = pathname !== '/bami' // ⟵ evita duplicar chat
+    const showFloatingChat = pathname !== '/bami'
 
     return (
         <div className="min-h-screen flex flex-col">

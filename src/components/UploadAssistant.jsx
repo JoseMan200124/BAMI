@@ -8,13 +8,12 @@ import { getCase, refreshTracker, notify } from '../lib/caseStore.js'
  * Props:
  *  - open: boolean
  *  - onClose: () => void
- *  - onUploaded: () => Promise<void> | void   (se dispara al terminar POST)
- *  - context: 'overlay' | 'phone'             (phone = dentro del simulador)
+ *  - onUploaded: () => Promise<void> | void
+ *  - context: 'overlay' | 'phone'
  *
- * Comportamiento:
- *  - Al seleccionar/soltar archivos → POST /documents/upload (id + files)
- *  - No pregunta por “validar con IA”: la validación corre en backend
- *  - Muestra estados “cargando / enviado / leyendo”
+ * Ahora soporta:
+ *  - Eventos '...:upload:close' para cerrar desde fuera.
+ *  - Evento '...:upload:demo' para simular drag&drop + subida (modo Autopilot).
  */
 export default function UploadAssistant({ open, onClose, onUploaded, context = 'overlay' }) {
     const [dragOver, setDragOver] = useState(false)
@@ -31,6 +30,44 @@ export default function UploadAssistant({ open, onClose, onUploaded, context = '
             setError('')
         }
     }, [open])
+
+    // Listeners para cerrar/simular
+    useEffect(() => {
+        if (!open) return
+
+        const closeAll = () => onClose?.()
+
+        const demo = async () => {
+            // simula arrastre
+            setDragOver(true)
+            await new Promise(r => setTimeout(r, 650))
+            setDragOver(false)
+
+            // simula “subiendo…”
+            setUploading(true)
+            setError('')
+            await new Promise(r => setTimeout(r, 900))
+
+            // “enviados N archivos”
+            const n = 2 + Math.floor(Math.random() * 3)
+            setUploading(false)
+            setSentCount(n)
+            try { await refreshTracker() } catch {}
+            onUploaded?.()
+            notify(`Enviados ${n} archivo(s). Analizando con IA…`)
+        }
+
+        const eventsClose = ['upload:close', 'ui:upload:close', 'sim:upload:close']
+        const eventsDemo = ['upload:demo', 'ui:upload:demo', 'sim:upload:demo']
+
+        eventsClose.forEach(e => window.addEventListener(e, closeAll))
+        eventsDemo.forEach(e => window.addEventListener(e, demo))
+
+        return () => {
+            eventsClose.forEach(e => window.removeEventListener(e, closeAll))
+            eventsDemo.forEach(e => window.removeEventListener(e, demo))
+        }
+    }, [open, onClose, onUploaded])
 
     if (!open) return null
 
@@ -53,7 +90,7 @@ export default function UploadAssistant({ open, onClose, onUploaded, context = '
             fd.append('id', caseId)
             files.forEach((f) => fd.append('files', f, f.name))
 
-            await api.uploadDocumentsForm(fd) // -> backend inicia lectura + validación (SSE narrará)
+            await api.uploadDocumentsForm(fd) // backend inicia lectura + validación
             setSentCount(files.length)
             await refreshTracker()
             onUploaded?.()
@@ -73,11 +110,10 @@ export default function UploadAssistant({ open, onClose, onUploaded, context = '
         doUpload(e.dataTransfer.files)
     }
 
-    // Layouts: overlay (pantalla completa) o phone (dentro del contenedor padre)
     const wrapperClass =
         context === 'phone'
-            ? 'absolute inset-0 z-[46]'       // queda dentro del “teléfono”
-            : 'fixed inset-0 z-[80]'          // modal global escritorio
+            ? 'absolute inset-0 z-[46]'
+            : 'fixed inset-0 z-[80]'
 
     const Backdrop = () => (
         <div
@@ -114,6 +150,7 @@ export default function UploadAssistant({ open, onClose, onUploaded, context = '
                                 'rounded-2xl border-2 border-dashed grid place-items-center text-center px-4 py-10 transition',
                                 dragOver ? 'bg-yellow-50 border-yellow-400' : 'bg-gray-50 border-gray-300'
                             ].join(' ')}
+                            data-dropzone
                         >
                             <div className="flex flex-col items-center gap-2 max-w-md">
                                 <UploadCloud />

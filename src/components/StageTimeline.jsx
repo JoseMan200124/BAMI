@@ -12,7 +12,14 @@ export const STAGES = [
 
 export default function StageTimeline({ stage = 'requiere', history = [], timeline = [] }) {
     const idx = STAGES.findIndex((s) => s.key === stage)
-    const items = (timeline.length ? timeline.map(t => ({ at: t.ts, stage: t.type, note: t.text })) : history)
+    // Compatibilidad: soporta {at,stage,note} y también {ts,type,text}
+    const items = (timeline && timeline.length
+        ? timeline.map(t => ({
+            at:   t.at   ?? t.ts   ?? Date.now(),
+            stage:t.stage?? t.type ?? 'requiere',
+            note: t.note ?? t.text ?? ''
+        }))
+        : (history || []))
     const widthPct = Math.max(0, idx) / (STAGES.length - 1) * 100
 
     return (

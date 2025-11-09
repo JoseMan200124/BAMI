@@ -38,12 +38,6 @@ export default function Navbar() {
     return (
         <header className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-gray-100">
             <div className="max-w-7xl mx-auto h-[var(--header-h)] flex items-center justify-between px-4">
-                <Link to={withBase('/')} className="flex items-center gap-2">
-                    {/* usa el logo con prefijo /bami para que resuelva bien en subruta */}
-                    <img src={`${BASE}/bami-logo.svg`} alt="BAMI" className="h-9" />
-                    <span className="font-extrabold">BAMI</span>
-                </Link>
-
                 <nav className="hidden md:flex items-center gap-1">
                     <NavLink to="/">Inicio</NavLink>
                     <NavLink to="/como-funciona">¿Cómo funciona?</NavLink>
