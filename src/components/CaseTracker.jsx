@@ -1,10 +1,12 @@
 // src/components/CaseTracker.jsx
-// Simulación controlada por evento único; nunca retrocede porcentaje/etapa; sin watchdogs que relancen.
+// Fuerza avance en modo agente, llena línea de tiempo, y coopera con el orquestador.
 
 import React, { useEffect, useRef, useState } from 'react'
 import { getCase, refreshTracker } from '../lib/caseStore.js'
 import StageTimeline from './StageTimeline.jsx'
 import ProgressRing from './ProgressRing.jsx'
+
+// Instala orquestador (cursor + autopilot + openTracker + lock)
 import '../lib/uiOrchestrator.js'
 
 function useGlobalTrackerPolling(active = true) {
@@ -44,9 +46,10 @@ export default function CaseTracker({ active = true }) {
     const [c, setC] = useState(getCase())
     const [sim, setSim] = useState({ on: false, stage: null, percent: null, missing: null })
     const timerRef = useRef(0)
-    const lastRunIdRef = useRef(null)
-    const lastPercentRef = useRef(0)
+    const watchdogRef = useRef(0)
+    const startTsRef = useRef(0)
 
+    // Pausar polling si hay demo
     useGlobalTrackerPolling(active && !sim.on)
 
     useEffect(() => {
@@ -55,68 +58,114 @@ export default function CaseTracker({ active = true }) {
         return () => window.removeEventListener('bami:caseUpdate', onU)
     }, [])
 
+    // Empuja al store y a la línea de tiempo
     const pushToStore = (step) => {
         try {
             const now = getCase() || {}
-            const curPct = now.percent ?? 0
-            const newPct = step.percent ?? curPct
-            // ⛔ no retroceder
-            if (newPct < curPct) return
-
             const entry = { at: Date.now(), stage: step.stage, note: step.log || 'sim' }
             const next = {
                 ...now,
                 stage: step.stage,
-                percent: newPct,
-                missing: step.missing ?? now.missing ?? [],
+                percent: step.percent,
+                missing: step.missing || [],
                 history: [...(now.history || []), entry],
                 timeline: [...(now.timeline || []), entry],
             }
-            lastPercentRef.current = newPct
             window.dispatchEvent(new CustomEvent('bami:caseUpdate', { detail: next }))
         } catch {}
     }
 
     const stagesSequence = [
         { stage: 'requiere',    percent: 10,  delay: 500,  missing: ['dpi', 'selfie', 'comprobante_domicilio'], log: 'Expediente iniciado.' },
-        { stage: 'recibido',    percent: 35,  delay: 900,  missing: ['selfie', 'comprobante_domicilio'],       log: 'Recepción confirmada.' },
+        { stage: 'recibido',    percent: 35,  delay: 800,  missing: ['selfie', 'comprobante_domicilio'],       log: 'Recepción confirmada.' },
         { stage: 'en_revision', percent: 70,  delay: 1100, missing: [],                                        log: 'En revisión operativa.' },
-        { stage: 'aprobado',    percent: 100, delay: 900,  missing: [],                                        log: 'Autorizado.' },
+        { stage: 'aprobado',    percent: 100, delay: 800,  missing: [],                                        log: 'Autorizado.' },
     ]
 
-    const runDemo = () => {
+    const runDemoFrom = (startStage) => {
         clearTimeout(timerRef.current)
-        const startIdx = Math.max(0, stagesSequence.findIndex(s => (c?.percent ?? 0) <= s.percent))
-        const steps = stagesSequence.slice(startIdx)
-        if (!steps.length) { setSim(s => ({ ...s, on: false })); return }
+        const idx0 = stagesSequence.findIndex(s => s.stage === (startStage || 'requiere'))
+        const idx = Math.max(0, idx0 === -1 ? 0 : idx0)
+        const steps = stagesSequence.slice(idx)
+        if (!steps.length) return
+        startTsRef.current = Date.now()
+
         setSim({ on: true, ...steps[0] })
         pushToStore(steps[0])
 
         let i = 1
         const next = () => {
-            if (i >= steps.length) { setSim(s => ({ ...s, on: false })); return }
-            setSim(s => ({ ...s, ...steps[i] }))
+            if (i >= steps.length) { setSim((s) => ({ ...s, on: false })); return }
+            setSim((s) => ({ ...s, ...steps[i] }))
             pushToStore(steps[i])
             timerRef.current = window.setTimeout(next, steps[i].delay)
-            i++
+            i += 1
         }
         timerRef.current = window.setTimeout(next, steps[0].delay)
     }
 
-    // 🚦 ÚNICO disparador de simulación (evita loops)
+    // Arranque de demo cuando el orquestador la pida (NO cerramos overlays aquí)
     useEffect(() => {
-        const onSim = (e) => {
-            const runId = e?.detail?.runId || 'default'
-            if (runId === lastRunIdRef.current) return // ignorar duplicados
-            lastRunIdRef.current = runId
-            runDemo()
+        const start = () => {
+            const current = (getCase() || {}).stage || 'requiere'
+            const p = (getCase() || {}).percent || 0
+            if (current === 'requiere' && p <= 10) runDemoFrom('requiere')
+            else runDemoFrom(current)
+            try { window.dispatchEvent(new Event('bami:cursor:forceShow')) } catch {}
         }
-        window.addEventListener('tracker:simulate:start', onSim)
+        const stop = () => { clearTimeout(timerRef.current); setSim((s) => ({ ...s, on: false })) }
+
+        window.addEventListener('bami:sim:runTracker', start)
+        window.addEventListener('bami:agent:openTracker', start)
+        window.addEventListener('bami:agent:showTracker', start)
+        window.addEventListener('bami:agent:start', start)
+        window.addEventListener('bami:sim:stop', stop)
+
+        // Safety: si ya está abierto el modal al montar, arrancamos
+        setTimeout(() => {
+            const txt = (document.querySelector('[role="dialog"], [data-modal], .modal, .DialogContent')?.innerText || '').toLowerCase()
+            if (txt.includes('seguimiento del expediente')) start()
+        }, 300)
+
         return () => {
-            window.removeEventListener('tracker:simulate:start', onSim)
+            window.removeEventListener('bami:sim:runTracker', start)
+            window.removeEventListener('bami:agent:openTracker', start)
+            window.removeEventListener('bami:agent:showTracker', start)
+            window.removeEventListener('bami:agent:start', start)
+            window.removeEventListener('bami:sim:stop', stop)
             clearTimeout(timerRef.current)
         }
-    }, [c?.percent])
+    }, [])
+
+    // ▶️ Soporte directo a simulación del agente (Recibido → En revisión → Aprobado)
+    useEffect(() => {
+        const onSim = () => {
+            // Asegura que el tracker avance desde recibido si veníamos en 10%
+            const cur = getCase() || {}
+            const startStage = (cur.stage === 'requiere' && (cur.percent || 0) <= 10) ? 'recibido' : cur.stage
+            runDemoFrom(startStage || 'recibido')
+        }
+        window.addEventListener('tracker:simulate:start', onSim)
+        return () => window.removeEventListener('tracker:simulate:start', onSim)
+    }, [])
+
+    // Watchdog: si el agente está activo y el tracker se queda en 10% > 3s, relanza demo
+    useEffect(() => {
+        clearInterval(watchdogRef.current)
+        watchdogRef.current = window.setInterval(() => {
+            if (!window.__BAMI_AGENT_ACTIVE__) return
+            const cc = getCase() || {}
+            const stage = cc.stage || 'requiere'
+            const pct = cc.percent || 0
+            const openTxt = (document.querySelector('[data-agent-area="tracker"], [role="dialog"], [data-modal], .modal, .DialogContent')?.innerText || '').toLowerCase()
+            const trackerOpen = openTxt.includes('seguimiento del expediente')
+            const elapsed = Date.now() - (startTsRef.current || 0)
+            if (trackerOpen && (stage === 'requiere' && pct <= 10) && elapsed > 3000) {
+                runDemoFrom('recibido')
+            }
+        }, 800)
+        return () => clearInterval(watchdogRef.current)
+    }, [])
 
     if (!c) {
         return (
@@ -132,13 +181,13 @@ export default function CaseTracker({ active = true }) {
 
     const stageMap = { requiere: 10, recibido: 35, en_revision: 70, aprobado: 100, alternativa: 70, autorizado: 100 }
     const basePercent = stageMap[c.stage] ?? c.percent ?? 0
-    const percent = sim.on && sim.percent != null ? sim.percent : Math.max(basePercent, lastPercentRef.current || 0)
+    const percent = sim.on && sim.percent != null ? sim.percent : basePercent
     const stage = sim.on && sim.stage ? sim.stage : c.stage
     const missing = sim.on && sim.missing ? sim.missing : c.missing || []
     const ap = c.applicant
 
     return (
-        <div className="card" data-agent-area="tracker">
+        <div className="card">
             <div className="flex items-start justify-between gap-3 sm:gap-4">
                 <div className="min-w-0">
                     <div className="text-xs text-gray-500">Expediente</div>
