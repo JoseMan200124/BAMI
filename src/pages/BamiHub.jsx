@@ -32,21 +32,14 @@ export default function BamiHub() {
 
         const onTrackerOpen = () => setShowTracker(true)
         const onTrackerToggle = () => setShowTracker(v => !v)
-        const onTrackerClose = () => {
-            // Si el agente está activo o hay lock, no cerramos
-            if (window.__BAMI_LOCK_TRACKER__ || window.__BAMI_AGENT_ACTIVE__) return
-            setShowTracker(false)
-        }
+        const onTrackerClose = () => setShowTracker(false)
 
         const onFormOpen = () => setShowForm(true)
 
         const onSimClose = () => setShowMobile(false)
 
         const onCloseAll = () => {
-            // Respeta el lock del agente: no cierres el tracker si está corriendo
-            if (!(window.__BAMI_LOCK_TRACKER__ || window.__BAMI_AGENT_ACTIVE__)) {
-                setShowTracker(false)
-            }
+            setShowTracker(false)
             setShowForm(false)
             setShowMobile(false)
             // cerrar asistente de subida en el chat
@@ -91,6 +84,12 @@ export default function BamiHub() {
     const openUploadEverywhere = () => {
         const prefix = showMobile ? 'sim' : 'ui'
         window.dispatchEvent(new Event(`${prefix}:open`))
+        window.dispatchEvent(new Event(`${prefix}:upload`))
+        window.dispatchEvent(new Event('upload:open'))
+    }
+    // 🔇 NUEVO: abre el asistente de subida SIN abrir el chat
+    const openUploadSilently = () => {
+        const prefix = showMobile ? 'sim' : 'ui'
         window.dispatchEvent(new Event(`${prefix}:upload`))
         window.dispatchEvent(new Event('upload:open'))
     }
@@ -342,31 +341,15 @@ export default function BamiHub() {
             {/* MODALES DESKTOP */}
             {showTracker && !showMobile && (
                 <div className="fixed inset-0 z-[70]">
-                    {/* ⛓️ No cerrar si el Agente está activo/lock */}
-                    <div
-                        className="absolute inset-0 bg-black/40"
-                        onClick={() => {
-                            if (window.__BAMI_LOCK_TRACKER__ || window.__BAMI_AGENT_ACTIVE__) return
-                            setShowTracker(false)
-                        }}
-                    />
+                    <div className="absolute inset-0 bg-black/40" onClick={() => setShowTracker(false)} />
                     <div className="absolute left-1/2 -translate-x-1/2 top-2 sm:top-4 w-[96vw] max-w-5xl">
-                        {/* data-agent-area="tracker" para que el agente detecte que está abierto */}
-                        <div data-agent-area="tracker" className="card border shadow-2xl rounded-2xl overflow-hidden max-h-[90svh]">
+                        <div className="card border shadow-2xl rounded-2xl overflow-hidden max-h-[90svh]">
                             <div className="flex items-center justify-between px-3 sm:px-4 py-2 bg-gray-50 border-b">
                                 <div className="flex items-center gap-2 text-sm font-semibold">
                                     <img src="/BAMI.svg" alt="BAMI" className="w-5 h-5 rounded-full" />
                                     <span>Seguimiento del expediente</span>
                                 </div>
-                                <button
-                                    className="btn"
-                                    onClick={() => {
-                                        if (window.__BAMI_LOCK_TRACKER__ || window.__BAMI_AGENT_ACTIVE__) return
-                                        setShowTracker(false)
-                                    }}
-                                >
-                                    Cerrar
-                                </button>
+                                <button className="btn" onClick={() => setShowTracker(false)}>Cerrar</button>
                             </div>
                             <div className="p-3 sm:p-4 overflow-auto">
                                 <CaseTracker active={true} />
@@ -392,7 +375,7 @@ export default function BamiHub() {
                 </div>
             )}
 
-            {/* === AGENTE BAMI (único globo inferior derecho) === */}
+            {/* === AGENTE BAMI (globo inferior derecho) === */}
             <BamiAgent
                 caseData={c}
                 product={product}
@@ -400,6 +383,8 @@ export default function BamiHub() {
                     start,
                     reopen,
                     openUploadEverywhere,
+                    // 👉 clave: versión silenciosa para que Autopilot NO abra el chat
+                    openUploadSilently,
                     validateEverywhere,
                     advisorEverywhere,
                     openTracker: () => setShowTracker(true),

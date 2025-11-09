@@ -96,29 +96,87 @@ function fmtMinutesToHM(min) {
     return h > 0 ? `${h}h ${mm}m` : `${mm}m`
 }
 
+/* ------------------------------ DEMO fallback ------------------------------ */
+function buildDemoData() {
+    const now = Date.now()
+    const mkLead = (i, stage, product, name) => ({
+        id: `LD-${(100000 + i).toString(36).toUpperCase()}`,
+        product,
+        channel: ['web','app','whatsapp','sucursal'][i % 4],
+        applicant: { name },
+        stage,
+        missing_count: stage === 'requiere' ? (1 + (i % 3)) : 0,
+        created_at: new Date(now - i * 3600_000).toISOString(),
+    })
+
+    const leads = [
+        mkLead(1,'aprobado','Tarjeta de Crédito','María López'),
+        mkLead(2,'en_revision','Préstamo Personal','Juan Pérez'),
+        mkLead(3,'recibido','Hipoteca','Sofía Ramírez'),
+        mkLead(4,'alternativa','PyME','Carlos Díaz'),
+        mkLead(5,'aprobado','Tarjeta de Crédito','Ana Fernández'),
+        mkLead(6,'en_revision','Tarjeta de Crédito','Luis Gómez'),
+        mkLead(7,'recibido','Préstamo Personal','Diego Morales'),
+        mkLead(8,'requiere','Hipoteca','Fernanda Soto'),
+        mkLead(9,'en_revision','PyME','Ricardo Castillo'),
+        mkLead(10,'aprobado','Préstamo Personal','Julia Martínez'),
+        mkLead(11,'alternativa','Hipoteca','Santiago Herrera'),
+        mkLead(12,'recibido','PyME','Laura Aguilar'),
+        mkLead(13,'aprobado','Tarjeta de Crédito','Gabriela Chávez'),
+        mkLead(14,'en_revision','Tarjeta de Crédito','Rodrigo León'),
+    ]
+
+    const funnel = {
+        requiere: 128,
+        recibido: 96,
+        en_revision: 56,
+        aprobado: 46,
+        alternativa: 18,
+    }
+
+    return {
+        totals: {
+            cases: 128,
+            aprobados: 46,
+            en_revision: 32,
+            alternativas: 18,
+            approval_rate: 46/128,
+            missing_avg: 1.7,
+            avg_response_minutes: 75,
+        },
+        funnel,
+        sla: { avg_minutes: 75 },
+        csat: { avg: 4.6, responses: 83 },
+        leads,
+        by_product: {
+            'Tarjeta de Crédito': 58,
+            'Préstamo Personal': 30,
+            'Hipoteca': 24,
+            'PyME': 16,
+        },
+    }
+}
+
 /* ------------------------------ Main panel ------------------------------ */
 export default function BamOpsPanel() {
     // Autologin DEMO: nunca pedimos credenciales
     const [data, setData] = useState(null)
 
-    const fetchData = async () => {
+    const fetchOnce = async () => {
         try {
-            // Garantiza que exista un token demo para clientes que lo lean del localStorage
-            if (!localStorage.getItem(TOKEN_KEY)) {
-                localStorage.setItem(TOKEN_KEY, 'demo')
-            }
+            if (!localStorage.getItem(TOKEN_KEY)) localStorage.setItem(TOKEN_KEY, 'demo')
             const d = await api.adminAnalytics()
-            setData(d)
+            // Si el backend devuelve algo válido lo usamos; si no, fallback demo.
+            if (d && (d.totals || d.funnel || d.leads)) setData(d)
+            else setData(buildDemoData())
         } catch {
-            // Si el backend requiere token real, mostramos el panel en modo demo (sin datos)
-            setData(null)
+            setData(buildDemoData())
         }
     }
 
     useEffect(() => {
-        fetchData()
-        const t = setInterval(fetchData, 10000)
-        return () => clearInterval(t)
+        // ❗ Se carga SOLO UNA VEZ (sin intervalos)
+        fetchOnce()
     }, [])
 
     // -------- Derivados ----------
@@ -145,14 +203,13 @@ export default function BamOpsPanel() {
         { key: 'alternativa', label: 'Alternativa', value: funnel?.alternativa || 0, color: '#c4b5fd' },
     ]
 
-    const leadsCompact = (data?.leads || []).slice(0, 14)
-
     return (
         <div className="card">
             <div className="text-xs text-gray-500 mb-1">Equipo BAM</div>
             <h3 className="h3 mb-2 flex items-center gap-2">
                 <img src="/BAMI.svg" alt="BAMI" className="w-5 h-5 rounded-full" />
                 <span>Panel de análisis y leads</span>
+                <span className="ml-2 text-xs text-gray-500">(modo demo — snapshot único)</span>
             </h3>
 
             {/* =================== Indicadores clave =================== */}
@@ -373,7 +430,7 @@ export default function BamOpsPanel() {
                             </tr>
                         ))}
                         {!((data?.leads || []).length) && (
-                            <tr><td colSpan="7" className="py-6 text-center text-gray-500">Sin datos (modo demo).</td></tr>
+                            <tr><td colSpan="7" className="py-6 text-center text-gray-500">Sin datos (demo).</td></tr>
                         )}
                         </tbody>
                     </table>
