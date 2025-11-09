@@ -2,15 +2,15 @@
 import React, { useEffect, useMemo, useRef, useState, useLayoutEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createPortal } from 'react-dom'
-import { Bot, Sparkles, MousePointer2, Activity, Play, Pause, X as XIcon } from 'lucide-react'
+import { Bot, Sparkles, MousePointer2, Activity, Play, X as XIcon } from 'lucide-react'
 import { api } from '../lib/apiClient'
 
 /**
- * BAMI Agent — Autopilot con cursor SIEMPRE visible, simulación de tracker y portal robusto.
- * - Cursor forzado visible, clic animado y halo de enfoque.
- * - Feed con los pasos ejecutados (transparencia y guía).
- * - Bloquea chat flotante y cierra overlays no esenciales durante el show.
- * - Simula subida de documentos y lanza avance del tracker (requiere → aprobado).
+ * BAMI Agent — Autopilot:
+ * - Cursor circular propio (oculto por defecto y visible sólo en Autopilot).
+ * - Oculta el cursor del sistema (flecha) mientras corre Autopilot.
+ * - Spotlight: recorta el overlay para resaltar el objetivo incluso si hay sombreado encima.
+ * - No reabre el tracker si el usuario lo cerró.
  */
 
 const EASE = [0.22, 1, 0.36, 1]
@@ -19,24 +19,21 @@ const DUR = {
     preRatio: 0.55,
     settlePause: 380,
     clickHold: 420,
-    ripple: 900,
-    halo: 800,
     betweenSteps: 220,
+    tip: 1300,
+    halo: 800
 }
 
 const Z = {
-    HUD:  1_999_980,
+    HUD: 1_999_980,
     HALO: 1_999_985,
-    TIP:  1_999_990,
+    TIP: 1_999_990,
     CURSOR: 2_147_483_646,
+    SPOT: 2_000_000
 }
 
 const wait = (ms) => new Promise(r => setTimeout(r, ms))
-
-// ---------- Utilidades DOM ----------
-const HUD_ROOT_SELECTOR = '#bami-hud'
-const isInsideHUD = (el) => !!el?.closest?.(HUD_ROOT_SELECTOR)
-
+const isInsideHUD = (el) => !!el?.closest?.('#bami-hud')
 const isVisible = (el) => {
     if (!el) return false
     if (isInsideHUD(el)) return false
@@ -49,18 +46,14 @@ const isVisible = (el) => {
     return true
 }
 const isDisabled = (el) => el?.disabled || el?.getAttribute?.('aria-disabled') === 'true'
-const findByDataId = (id) => document.querySelector(`[data-agent-id="${id}"]`)
 const clickableAncestor = (el) => el?.closest?.('button,[role="button"],a') || el
-const normalize = (t) => (t || '')
-    .normalize('NFD').replace(/\p{Diacritic}/gu, '')
-    .replace(/\s+/g, ' ').trim().toLowerCase()
+const normalize = (t) => (t || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/\s+/g, ' ').trim().toLowerCase()
 
 const findByText = (selectors, text) => {
     const goal = normalize(text)
     const nodes = Array.from(document.querySelectorAll(selectors.join(',')))
     return nodes.filter(n => !isInsideHUD(n) && normalize(n.textContent || '').includes(goal))
 }
-
 const score = (el, boostText=false) => {
     let s = 0
     if (isVisible(el)) s += 6
@@ -70,14 +63,13 @@ const score = (el, boostText=false) => {
     if (boostText) s += 1
     return s
 }
-
 const queryBestTarget = ({ selectors=[], texts=[], kind='click' }) => {
     const found = []
     const push = (el, by) => { if (el && !isInsideHUD(el)) found.push({ el, by }) }
 
     for (const sel of selectors) {
         let el = null
-        if (sel.startsWith('btn-')) el = findByDataId(sel)
+        if (sel.startsWith('btn-')) el = document.querySelector(`[data-agent-id="${sel}"]`)
         else if (sel.startsWith('[data-agent-id=')) el = document.querySelector(sel)
         else el = document.querySelector(sel)
         push(el, 'selector')
@@ -101,7 +93,6 @@ const queryBestTarget = ({ selectors=[], texts=[], kind='click' }) => {
     }
     return best
 }
-
 const waitForTarget = async ({ selectors=[], texts=[], timeout=1600, kind='click' }) => {
     const now = queryBestTarget({ selectors, texts, kind })
     if (now) return now
@@ -113,7 +104,6 @@ const waitForTarget = async ({ selectors=[], texts=[], timeout=1600, kind='click
     }
     return null
 }
-
 const ensureVisible = async (el) => {
     if (!el) return
     if (!isVisible(el)) {
@@ -122,25 +112,28 @@ const ensureVisible = async (el) => {
     }
 }
 
-/* ------------------------------ Componente ------------------------------ */
+/* -------------------------------- Component -------------------------------- */
 export default function BamiAgent({ caseData, product, controls }) {
     const [open, setOpen] = useState(false)
     const [running, setRunning] = useState(false)
     const [feed, setFeed] = useState([])
     const feedRef = useRef(null)
 
-    // cursor y efectos
+    // Cursor circular — OCULTO hasta iniciar Autopilot
     const [cursor, setCursor] = useState({
-        show: true, // visible desde el inicio
-        x: typeof window !== 'undefined' ? (window.scrollX + 32) : 32,
-        y: typeof window !== 'undefined' ? (window.scrollY + 32) : 32,
+        show: false,
+        x: (typeof window !== 'undefined' ? (window.scrollX + 32) : 32),
+        y: (typeof window !== 'undefined' ? (window.scrollY + 32) : 32),
         clicking: false,
         transition: { type: 'tween', ease: EASE, duration: 0 }
     })
+
+    // Spotlight y halo
     const [halo, setHalo] = useState(null)
+    const [spot, setSpot] = useState(null) // {x,y,w,h} para recortar overlay
     const [tip, setTip] = useState(null)
 
-    // portal a <body> con estilo/z-index reforzado
+    // Portal raíz y estilos globales (incluye ocultar cursor del sistema)
     const [portalRoot, setPortalRoot] = useState(null)
     useLayoutEffect(() => {
         let el = document.getElementById('bami-agent-portal')
@@ -157,25 +150,22 @@ export default function BamiAgent({ caseData, product, controls }) {
             st = document.createElement('style')
             st.id = styleId
             st.textContent = `
-                #bami-agent-portal{position:relative;z-index:${Z.CURSOR+1} !important}
-                #bami-hud{z-index:${Z.HUD} !important}
-                .bami-cursor-layer{z-index:${Z.CURSOR} !important;opacity:1 !important;visibility:visible !important;pointer-events:none !important;will-change:transform}
-            `
+        #bami-agent-portal{position:relative;z-index:${Z.CURSOR+1} !important}
+        #bami-hud{z-index:${Z.HUD} !important}
+        .bami-cursor-layer{z-index:${Z.CURSOR} !important;opacity:1 !important;visibility:visible !important;pointer-events:none !important;will-change:transform}
+        /* 🔒 Ocultar el cursor de sistema sólo cuando el body tenga esta clase */
+        .bami-hide-cursor, .bami-hide-cursor * { cursor: none !important; }
+      `
             document.head.appendChild(st)
         }
         setPortalRoot(el)
-
-        const mo = new MutationObserver(() => {
-            if (!document.body.contains(el)) document.body.appendChild(el)
-            document.body.appendChild(el)
-        })
-        mo.observe(document.body, { childList: true })
-        return () => mo.disconnect()
+        return () => {}
     }, [])
 
-    // Watchdog para cursor
+    // Watchdog de seguridad del cursor: NO lo muestra si no está corriendo
     useEffect(() => {
         const safePutOnScreen = () => {
+            if (!running) return
             setCursor(c => {
                 const margin = 24
                 const sx = window.scrollX, sy = window.scrollY
@@ -183,8 +173,7 @@ export default function BamiAgent({ caseData, product, controls }) {
                 const maxY = sy + window.innerHeight - margin
                 let x = c.x, y = c.y
                 if (x < sx + margin || x > maxX || y < sy + margin || y > maxY) {
-                    x = sx + margin
-                    y = sy + margin
+                    x = sx + margin; y = sy + margin
                 }
                 return { ...c, show: true, x, y, transition: { type: 'tween', ease: EASE, duration: 0.0 } }
             })
@@ -193,20 +182,17 @@ export default function BamiAgent({ caseData, product, controls }) {
         window.addEventListener('scroll', safePutOnScreen, { passive: true })
         window.addEventListener('resize', safePutOnScreen)
         document.addEventListener('visibilitychange', safePutOnScreen)
-        window.bamiForceCursor = safePutOnScreen
         return () => {
             clearInterval(interval)
             window.removeEventListener('scroll', safePutOnScreen)
             window.removeEventListener('resize', safePutOnScreen)
             document.removeEventListener('visibilitychange', safePutOnScreen)
-            delete window.bamiForceCursor
         }
-    }, [])
+    }, [running])
 
-    // métricas demo (no crítico)
+    // Métricas demo
     const [metrics, setMetrics] = useState(null)
-    const fetchMetrics = async () => { try { setMetrics(await api.adminAnalytics()) } catch {} }
-    useEffect(() => { fetchMetrics() }, [])
+    useEffect(() => { (async()=>{ try{ setMetrics(await api.adminAnalytics()) }catch{} })() }, [])
 
     const insight = useMemo(() => {
         const p = []
@@ -223,14 +209,10 @@ export default function BamiAgent({ caseData, product, controls }) {
         return p.join(' | ')
     }, [caseData, product, metrics])
 
-    // feed helpers
     const logLine = (text) => setFeed(prev => [...prev, { id: `${Date.now()}-${Math.random()}`, t: new Date(), text }])
-    useEffect(() => {
-        if (!feedRef.current) return
-        feedRef.current.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' })
-    }, [feed])
+    useEffect(() => { if (feedRef.current) feedRef.current.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' }) }, [feed])
 
-    // efectos visuales
+    // Utilidades visuales
     const showHalo = async (el, ms=DUR.halo) => {
         if (!el) return
         const r = el.getBoundingClientRect()
@@ -240,38 +222,43 @@ export default function BamiAgent({ caseData, product, controls }) {
         await wait(ms)
         setHalo(null)
     }
-
-    const showTip = async (el, text, keep=1400) => {
-        if (!el) return
+    const setSpotlightFor = (el) => {
+        if (!el) { setSpot(null); return }
         const r = el.getBoundingClientRect()
-        const rawX = r.left + (window.scrollX || 0) + r.width + 10
-        const rawY = r.top + (window.scrollY || 0) + r.height / 2
+        const rect = { x: r.left + (window.scrollX || 0), y: r.top + (window.scrollY || 0), w: r.width, h: r.height }
+        setSpot(rect)
+    }
+    const clearSpot = () => setSpot(null)
+
+    const showTipFor = async (el, text) => {
+        const r = el?.getBoundingClientRect?.()
+        let x = window.scrollX + (r ? (r.left + r.width + 10) : 20)
+        let y = window.scrollY + (r ? (r.top + r.height/2) : 20)
         const maxX = window.scrollX + window.innerWidth - 260
-        const x = Math.min(rawX, maxX)
-        const y = Math.max(rawY, window.scrollY + 12)
+        x = Math.min(x, maxX); y = Math.max(y, window.scrollY + 12)
         setTip({ x, y, text, key: Date.now() })
-        await wait(keep)
+        await wait(DUR.tip)
         setTip(null)
     }
 
     const moveToEl = async (el, total=DUR.moveTotal) => {
         if (!el) return
+        setSpotlightFor(el)             // 🔦 spotlight antes
         await ensureVisible(el)
         const r = el.getBoundingClientRect()
         const finalX = r.left + r.width * 0.5 + (window.scrollX || 0)
         const finalY = r.top + r.height * 0.5 + (window.scrollY || 0)
         const preX = finalX - Math.min(90, r.width * 0.5)
         const preY = finalY - Math.min(60, r.height * 0.4)
-
         setCursor(c => ({ ...c, show: true }))
-        const d1 = Math.max(0.35, total * DUR.preRatio)
+        const d1 = Math.max(0.35, total * 0.55)
         setCursor(c => ({ ...c, transition: { type: 'tween', ease: EASE, duration: d1 }, x: preX, y: preY }))
         await wait(d1 * 1000 + 110)
         await wait(DUR.betweenSteps)
-        const d2 = Math.max(0.35, total * (1 - DUR.preRatio))
+        const d2 = Math.max(0.35, total * 0.45)
         setCursor(c => ({ ...c, transition: { type: 'tween', ease: EASE, duration: d2 }, x: finalX, y: finalY }))
         await wait(d2 * 1000 + 110)
-        await showHalo(el, DUR.halo)
+        await showHalo(el)
     }
 
     const clickEffect = async () => {
@@ -282,22 +269,21 @@ export default function BamiAgent({ caseData, product, controls }) {
         await wait(DUR.settlePause)
     }
 
-    // helpers de limpieza
+    // Limpieza global de overlays comunes
     const closeEverything = () => {
         window.dispatchEvent(new Event('ui:upload:close'))
         window.dispatchEvent(new Event('upload:close'))
-        window.dispatchEvent(new Event('ui:tracker:close'))
         window.dispatchEvent(new Event('ui:form:close'))
         window.dispatchEvent(new Event('sim:tracker:close'))
         window.dispatchEvent(new Event('sim:ops:close'))
         window.dispatchEvent(new Event('sim:close'))
     }
 
-    // Simulación del tracker
-    const simulateTracker = (opts={}) => {
+    // Simulación de tracker — NO lo “bloquea”; sólo dispara una vez.
+    const simulateTracker = () => {
         const detail = {
             caseId: (caseData?.id || 'demo-' + Date.now()),
-            timeline: opts.timeline || [
+            timeline: [
                 { key: 'recibido',  label: 'Documentos recibidos', delayMs: 700 },
                 { key: 'validando', label: 'Validación automática', delayMs: 1200 },
                 { key: 'aprobado',  label: 'Aprobado',              delayMs: 900, final: true }
@@ -307,19 +293,13 @@ export default function BamiAgent({ caseData, product, controls }) {
         window.dispatchEvent(new Event('bami:sim:runTracker'))
     }
 
-    // Ruta
+    // Ruta de demostración
     const ROUTE = [
-        {
-            type: 'focus',
-            id: 'focus-product-pill',
-            say: 'Seleccionando producto: Tarjeta de Crédito.',
-            targets: { selectors: ['[data-agent-id="pill-product"]','[data-agent-id="pill-tarjeta"]','.segmented [data-active]','.segmented'], texts: ['tarjeta de crédito','tarjeta de credito'] }
-        },
         {
             type: 'click',
             id: 'simular-app-top',
             say: 'Simulamos la App del cliente.',
-            targets: { selectors: ['btn-simular-top','[data-agent-id="btn-simular-top"]','.top-actions [data-agent-id="btn-simular-top"]'], texts: ['simular app','simulador'] },
+            targets: { selectors: ['[data-agent-id="btn-simular-top"]','[data-agent-id="btn-simular"]'], texts: ['simular app','simulador'] },
             run: () => controls?.openSimulator?.(),
             success: () => !!document.querySelector('[data-simulator], .simulator-panel'),
             forceSuccessIfRun: true
@@ -328,135 +308,77 @@ export default function BamiAgent({ caseData, product, controls }) {
             type: 'click',
             id: 'crear-expediente',
             say: 'Creamos el expediente.',
-            targets: { selectors: ['btn-crear-expediente','[data-agent-id="btn-crear-expediente"]','button#create-expediente'], texts: ['crear expediente','nuevo expediente'] },
+            targets: { selectors: ['[data-agent-id="btn-crear-expediente"]','button#create-expediente'], texts: ['crear expediente','nuevo expediente'] },
             run: () => controls?.start?.(),
             success: () => !!document.querySelector('[data-expediente], .toast-expediente, [data-case-created]'),
             forceSuccessIfRun: true
         },
         {
-            type: 'focus',
-            id: 'focus-form-area',
-            say: 'BAMI valida automáticamente los datos del cliente.',
-            targets: { selectors: ['[data-agent-area="client-journey"]','.client-area','.form-panel'], texts: ['acompañamiento','área cliente','area cliente'] }
-        },
-        {
             type: 'click',
             id: 'subir-documentos',
             say: 'Abrimos el asistente de subida de documentos.',
-            targets: { selectors: ['btn-recomendado','btn-subir-documentos','[data-agent-id="btn-recomendado"]','[data-agent-id="btn-subir-documentos"]'], texts: ['subir documentos','subir 3 documento','continuar'] },
+            targets: { selectors: ['[data-agent-id="btn-recomendado"]','[data-agent-id="btn-subir-documentos"]'], texts: ['subir documentos','continuar'] },
             run: () => controls?.openUploadEverywhere?.(),
             success: () => !!document.querySelector('[data-upload-portal],[data-dropzone],.upload-modal'),
             forceSuccessIfRun: true,
             after: async () => {
-                // Señales de demo a cualquier uploader/bridge existente
                 window.dispatchEvent(new Event('upload:demo'))
                 window.dispatchEvent(new Event('ui:upload:demo'))
                 window.dispatchEvent(new Event('sim:upload:demo'))
-                // Abrimos tracker y lanzamos simulación
-                setTimeout(() => {
-                    window.dispatchEvent(new Event('ui:tracker:open'))
-                    try { controls?.openTracker?.() } catch {}
-                    window.dispatchEvent(new Event('bami:agent:openTracker'))
-                    simulateTracker()
-                }, 900)
+                // Lanzamos simulación del progreso del caso (sin abrir el tracker forzosamente)
+                setTimeout(() => simulateTracker(), 700)
             }
         },
         {
             type: 'click',
             id: 'abrir-tracker',
             say: 'Abrimos el tracker para ver el estado completo.',
-            targets: { selectors: ['btn-tracker-top','[data-agent-id="btn-tracker-top"]','btn-tracker','[data-agent-id="btn-tracker"]'], texts: ['tracker','abrir tracker'] },
-            run: () => { controls?.openTracker?.(); window.dispatchEvent(new Event('bami:agent:openTracker')); window.dispatchEvent(new Event('bami:sim:runTracker')) },
+            targets: { selectors: ['[data-agent-id="btn-tracker-top"]','[data-agent-id="btn-tracker"]'], texts: ['tracker','abrir tracker'] },
+            run: () => controls?.openTracker?.(),
             success: () => !!document.querySelector('[data-agent-area="tracker"],[data-tracker-panel],.tracker-panel'),
             forceSuccessIfRun: true
         },
-        {
-            type: 'focus',
-            id: 'focus-bam-ops',
-            say: 'Vista para BAM: panel de análisis y leads.',
-            before: () => { closeEverything() },
-            targets: { selectors: ['[data-agent-area="panel-bam-ops"]','.ops-panel','.analytics-panel'], texts: ['panel de análisis y leads','panel de analisis y leads'] }
-        },
         { type: 'speak', id: 'end', say: 'Listo. Flujo presentado de inicio a fin.' }
     ]
-
-    const showTipFor = async (el, text, kind) => {
-        logLine(text)
-        if (el && (kind === 'focus' || kind === 'click')) await showTip(el, text, 1300)
-    }
 
     const runFocus = async (step) => {
         step?.before?.()
         const target = await waitForTarget({ ...(step.targets || {}), kind: 'focus' })
         if (target) {
+            setSpotlightFor(target)
             await moveToEl(target)
-            await showTipFor(target, step.say, 'focus')
+            await showTipFor(target, step.say)
         } else {
-            await showTipFor(null, step.say, 'focus')
+            setSpot(null)
+            logLine(step.say)
+            await wait(600)
         }
         await Promise.resolve(step?.after?.())
+        clearSpot()
         return true
     }
-
     const runClick = async (step) => {
         step?.before?.()
         const target = await waitForTarget({ ...(step.targets || {}), kind: 'click' })
         if (target) {
+            setSpotlightFor(target)
             await moveToEl(target)
-            await showTipFor(target, step.say, 'click')
+            await showTipFor(target, step.say)
             await clickEffect()
             try { await Promise.resolve(step.run?.()) } catch {}
             await wait(600)
-            if (step.success && step.success()) { await Promise.resolve(step?.after?.()); return true }
-            if (step.forceSuccessIfRun && step.run) { await Promise.resolve(step?.after?.()); return true }
             await Promise.resolve(step?.after?.())
-            return true
+        } else {
+            setSpot(null)
+            logLine(step.say + ' (simulado)')
+            try { await Promise.resolve(step.run?.()) } catch {}
+            await Promise.resolve(step?.after?.())
+            await wait(500)
         }
-        await showTipFor(null, step.say + ' (simulado)', 'click')
-        try { await Promise.resolve(step.run?.()) } catch {}
-        await Promise.resolve(step?.after?.())
-        await wait(500)
+        clearSpot()
         return true
     }
-
     const runSpeak = async (step) => { step?.before?.(); logLine(step.say); await Promise.resolve(step?.after?.()); await wait(700); return true }
-
-    const runDemo = async () => {
-        if (running) return
-        setRunning(true)
-        logLine('Iniciando Autopilot…')
-
-        // 🔒 Señales globales para UX
-        window.__BAMI_AGENT_ACTIVE__ = true
-        window.__BAMI_DISABLE_FLOATING__ = true // desactiva chat flotante
-        window.__BAMI_LOCK_TRACKER__ = true     // evita que se cierre el tracker dentro del simulador
-
-        // Cursor presente desde el inicio (por si algo mueve el layout)
-        try { window.dispatchEvent(new Event('bami:cursor:forceShow')) } catch {}
-
-        // Notificamos a orquestadores/trackers
-        window.dispatchEvent(new Event('bami:agent:start'))
-
-        try {
-            for (const step of ROUTE) {
-                await runStep(step)
-                await wait(260)
-            }
-            logLine('Flujo completado.')
-        } finally {
-            await wait(400)
-            setHalo(null); setTip(null)
-            setCursor(c => ({ ...c, show: true, clicking: false, transition: { type: 'tween', ease: EASE, duration: 0.8 } }))
-
-            // ⛔ Limpiar bloqueos pero cerrar overlays secundarios
-            window.__BAMI_LOCK_TRACKER__ = false
-            closeEverything() // cierra todo lo que no sea contenido principal
-            setRunning(false)
-
-            // mantenemos el flag para que el flotante quede deshabilitado mientras usuario presenta
-            setTimeout(()=>{ window.__BAMI_AGENT_ACTIVE__ = false }, 200)
-        }
-    }
 
     const runStep = async (step) => {
         switch (step.type) {
@@ -467,13 +389,45 @@ export default function BamiAgent({ caseData, product, controls }) {
         }
     }
 
-    // Insight inicial (una línea)
+    // Insight inicial en feed (una sola vez)
     useEffect(() => { if (insight) logLine(`🔎 ${insight}`) }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-    // UI del HUD (botón + feed)
+    const startBodyHideCursor = () => document.body.classList.add('bami-hide-cursor')
+    const stopBodyHideCursor = () => document.body.classList.remove('bami-hide-cursor')
+
+    const runDemo = async () => {
+        if (running) return
+        setRunning(true)
+        setFeed([])
+
+        // Señales globales
+        window.__BAMI_AGENT_ACTIVE__ = true
+        window.__BAMI_DISABLE_FLOATING__ = true
+
+        // Mostrar cursor circular y ocultar flecha del sistema
+        startBodyHideCursor()
+        setCursor(c => ({ ...c, show: true }))
+
+        try {
+            for (const step of ROUTE) { await runStep(step); await wait(260) }
+            logLine('Flujo completado.')
+        } finally {
+            // Restablecer
+            clearSpot(); setHalo(null); setTip(null)
+            setCursor(c => ({ ...c, show: false, clicking: false, transition: { type: 'tween', ease: EASE, duration: 0.6 } }))
+            stopBodyHideCursor()
+
+            // No bloquear tracker ni reabrirlo
+            window.__BAMI_AGENT_ACTIVE__ = false
+            setRunning(false)
+            // Cierra overlays secundarios (pero no forza abrir/cerrar tracker)
+            closeEverything()
+        }
+    }
+
+    /* --------------------------- HUD y capas visuales --------------------------- */
     const hud = (
         <div id="bami-hud" className="fixed right-4 bottom-4 z-[1999980]">
-            {/* Botón flotante */}
             <div className="flex flex-col items-end gap-2 mb-2">
                 <button
                     onClick={() => setOpen(v=>!v)}
@@ -505,17 +459,9 @@ export default function BamiAgent({ caseData, product, controls }) {
                             <div className="text-sm font-semibold flex items-center gap-2">
                                 <Sparkles size={16}/> Panel del agente
                             </div>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={running ? undefined : runDemo}
-                                    className={`px-2 py-1 rounded-md text-xs ${running ? 'bg-gray-200 text-gray-600' : 'bg-bami-yellow text-black'}`}
-                                >
-                                    {running ? 'En curso' : 'Autopilot'}
-                                </button>
-                                <button onClick={()=>setOpen(false)} className="p-1 rounded-md hover:bg-gray-200" aria-label="Cerrar">
-                                    <XIcon size={14}/>
-                                </button>
-                            </div>
+                            <button onClick={()=>setOpen(false)} className="p-1 rounded-md hover:bg-gray-200" aria-label="Cerrar">
+                                <XIcon size={14}/>
+                            </button>
                         </div>
                         <div className="p-3 text-xs text-gray-700">
                             <div className="mb-2">
@@ -532,16 +478,12 @@ export default function BamiAgent({ caseData, product, controls }) {
                                 ))}
                                 {!feed.length && <div className="text-gray-500">Sin eventos aún.</div>}
                             </div>
-                            <div className="mt-2 flex items-center justify-end gap-2">
-                                <button onClick={()=>{ setFeed([]) }} className="text-[11px] px-2 py-1 rounded-md border hover:bg-gray-50">Limpiar</button>
-                                <button onClick={closeEverything} className="text-[11px] px-2 py-1 rounded-md border hover:bg-gray-50">Cerrar overlays</button>
-                            </div>
                         </div>
                     </motion.div>
                 )}
             </AnimatePresence>
 
-            {/* Cursor visual (círculo con pulso) */}
+            {/* Cursor circular — sólo visible en Autopilot */}
             <div className="bami-cursor-layer pointer-events-none fixed inset-0" style={{ zIndex: Z.CURSOR }}>
                 <motion.div
                     initial={false}
@@ -566,7 +508,35 @@ export default function BamiAgent({ caseData, product, controls }) {
                 </motion.div>
             </div>
 
-            {/* Halo de enfoque */}
+            {/* 🔦 Spotlight (4 paneles alrededor del objetivo para recortar el sombreado superior) */}
+            <AnimatePresence>
+                {spot && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                        className="fixed inset-0 pointer-events-none"
+                        style={{ zIndex: Z.SPOT }}
+                    >
+                        {/* Paneles oscuros alrededor del rectángulo (x,y,w,h) */}
+                        <div className="fixed left-0 top-0 right-0" style={{ height: Math.max(0, spot.y - window.scrollY), background: 'rgba(0,0,0,.45)' }} />
+                        <div className="fixed left-0 bottom-0 right-0" style={{ top: spot.y + spot.h, background: 'rgba(0,0,0,.45)' }} />
+                        <div className="fixed top-0 bottom-0 left-0" style={{ width: Math.max(0, spot.x - window.scrollX), background: 'rgba(0,0,0,.45)' }} />
+                        <div className="fixed top-0 bottom-0" style={{ left: spot.x + spot.w, right: 0, background: 'rgba(0,0,0,.45)' }} />
+                        {/* Borde brillante */}
+                        <div
+                            className="fixed rounded-xl pointer-events-none"
+                            style={{
+                                left: spot.x, top: spot.y, width: spot.w, height: spot.h,
+                                boxShadow: '0 0 0 4px rgba(253,224,71,.8), 0 0 0 10px rgba(253,224,71,.2)'
+                            }}
+                        />
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Halo extra por si el boton queda justo bajo el sombreado */}
             <AnimatePresence>
                 {halo && (
                     <motion.div
@@ -582,7 +552,7 @@ export default function BamiAgent({ caseData, product, controls }) {
                 )}
             </AnimatePresence>
 
-            {/* Tip flotante */}
+            {/* Tip explicativo */}
             <AnimatePresence>
                 {tip && (
                     <motion.div
@@ -600,7 +570,6 @@ export default function BamiAgent({ caseData, product, controls }) {
         </div>
     )
 
-    // Montaje del portal HUD y cursor
     if (!portalRoot) return null
     return createPortal(hud, portalRoot)
 }

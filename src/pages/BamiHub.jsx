@@ -17,35 +17,36 @@ export default function BamiHub() {
     const [showMobile, setShowMobile] = useState(false)
     const [viewMode, setViewMode] = useState('both') // both | client | ops
 
-    // Mantener svh correcto en móviles
+    // Manejar vh móvil
     useEffect(() => {
-        const setVH = () =>
-            document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`)
+        const setVH = () => document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`)
         setVH()
         window.addEventListener('resize', setVH)
         return () => window.removeEventListener('resize', setVH)
     }, [])
 
-    // Suscripciones
     useEffect(() => {
         const onU = (e) => setC(e.detail)
 
-        const onTrackerOpen = () => setShowTracker(true)
+        // 🚫 Respeta el cierre del usuario
+        const onTrackerOpen = () => {
+            const userClosed = window.__BAMI_USER_CLOSED_TRACKER__
+            // Si el usuario cerró hace menos de 2.5s y NO está el Autopilot activo, no lo reabrimos
+            if (userClosed && (Date.now() - userClosed < 2500) && !window.__BAMI_AGENT_ACTIVE__) return
+            setShowTracker(true)
+        }
         const onTrackerToggle = () => setShowTracker(v => !v)
         const onTrackerClose = () => setShowTracker(false)
 
         const onFormOpen = () => setShowForm(true)
-
         const onSimClose = () => setShowMobile(false)
 
         const onCloseAll = () => {
             setShowTracker(false)
             setShowForm(false)
             setShowMobile(false)
-            // cerrar asistente de subida en el chat
             window.dispatchEvent(new Event('ui:upload:close'))
             window.dispatchEvent(new Event('upload:close'))
-            // cerrar modales internos del simulador
             window.dispatchEvent(new Event('sim:tracker:close'))
             window.dispatchEvent(new Event('sim:ops:close'))
         }
@@ -82,7 +83,7 @@ export default function BamiHub() {
         setC(cc); setShowTracker(true)
     }
 
-    // ⛔ Durante Autopilot NO abrimos el chat; sólo la UI de upload/tracker.
+    // ⛔ En Autopilot no abrimos el chat flotante
     const openUploadEverywhere = () => {
         const prefix = showMobile ? 'sim' : 'ui'
         const isAutopilot = typeof window !== 'undefined' && window.__BAMI_AGENT_ACTIVE__ === true
@@ -102,7 +103,6 @@ export default function BamiHub() {
         window.dispatchEvent(new Event(`${p}:advisor`))
     }
 
-    // CTA recomendado
     const nextCTA = useMemo(() => {
         if (!c) return { id: 'create', label: 'Crear expediente', action: () => start() }
         if ((c.missing || []).length > 0)
@@ -113,7 +113,6 @@ export default function BamiHub() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [c, product, showMobile])
 
-    // Contenido de columnas (desktop)
     const DesktopTwoColumns = (
         <div className="grid lg:grid-cols-2 gap-4">
             {/* CLIENTE */}
@@ -136,7 +135,6 @@ export default function BamiHub() {
                         </button>
                     </div>
                 </div>
-                {/* 🔒 Evitamos chat flotante de la esquina siempre aquí */}
                 <BamiChatWidget variant="fullscreen" disableFloatingTrigger={true} allowOpsButton={false} />
             </section>
 
@@ -167,10 +165,9 @@ export default function BamiHub() {
 
     return (
         <main className="min-h-[100svh] bg-neutral-50 flex flex-col">
-            {/* HEADER superior fijo */}
+            {/* HEADER */}
             <header className="sticky top-0 z-[60] backdrop-blur bg-white/85 border-b">
                 <div className="max-w-7xl mx-auto px-3 sm:px-4 h-16 flex items-center justify-between gap-2">
-                    {/* Título */}
                     <div className="flex items-center gap-2 min-w-0">
                         <img src="/BAMI.svg" alt="BAMI" className="w-6 h-6 rounded-full ring-1 ring-yellow-300 shrink-0" />
                         <div className="text-base sm:text-lg font-extrabold tracking-tight truncate">
@@ -178,11 +175,7 @@ export default function BamiHub() {
                         </div>
                     </div>
 
-                    {/* Toolbar: SIN WRAP (scroll horizontal si se llena) */}
-                    <div
-                        className="hidden sm:flex items-center gap-2 flex-nowrap overflow-x-auto whitespace-nowrap pl-2"
-                        style={{ scrollbarWidth: 'none' }}
-                    >
+                    <div className="hidden sm:flex items-center gap-2 flex-nowrap overflow-x-auto whitespace-nowrap pl-2" style={{ scrollbarWidth: 'none' }}>
                         <select
                             className="border rounded-xl px-3 py-1.5 text-sm"
                             value={product}
@@ -208,7 +201,6 @@ export default function BamiHub() {
                             ))}
                         </div>
 
-                        {/* Acciones principales: nunca hacen wrap */}
                         <div className="flex items-center gap-2 flex-nowrap">
                             <button
                                 data-agent-id="btn-simular-top"
@@ -248,16 +240,13 @@ export default function BamiHub() {
                     </div>
                 </div>
 
-                {/* Franja “Siguiente paso” */}
+                {/* Franja recomendación */}
                 <div className="border-t bg-yellow-50/70">
-                    <div
-                        className="max-w-7xl mx-auto px-3 sm:px-4 py-2 text-sm flex items-center justify-between gap-2 flex-wrap"
-                    >
+                    <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 text-sm flex items-center justify-between gap-2 flex-wrap">
                         <div className="text-gray-700 min-w-0">
                             <span className="text-xs text-gray-600 mr-2">Siguiente paso</span>
                             <b className="whitespace-nowrap">Te recomendamos: {nextCTA.label}</b>
                         </div>
-
                         <div className="flex items-center gap-2 flex-nowrap">
                             <button
                                 data-agent-id="btn-recomendado"
@@ -266,7 +255,6 @@ export default function BamiHub() {
                             >
                                 {nextCTA.label}
                             </button>
-
                             <button
                                 data-agent-id="btn-continuar"
                                 className="btn btn-sm shrink-0 whitespace-nowrap"
@@ -283,7 +271,6 @@ export default function BamiHub() {
             <section className="flex-1">
                 <div className="max-w-7xl mx-auto px-3 sm:px-4 py-3 sm:py-6">
                     {viewMode === 'both' && (<>{DesktopTwoColumns}</>)}
-
                     {viewMode === 'client' && (
                         <section className="rounded-2xl border shadow-sm overflow-hidden bg-white">
                             <div className="px-3 sm:px-4 py-2 border-b bg-gray-50 flex items-center justify-between">
@@ -302,24 +289,16 @@ export default function BamiHub() {
                                     >
                                         Simular App
                                     </button>
-                                    <button
-                                        className="btn btn-dark btn-sm whitespace-nowrap"
-                                        onClick={openUploadEverywhere}
-                                    >
+                                    <button className="btn btn-dark btn-sm whitespace-nowrap" onClick={openUploadEverywhere}>
                                         Subir documentos
                                     </button>
                                 </div>
                             </div>
-                            {/* Chat en modo “panel” permanente, sin flotante */}
                             <BamiChatWidget variant="fullscreen" disableFloatingTrigger={true} allowOpsButton={false} />
                         </section>
                     )}
-
                     {viewMode === 'ops' && (
-                        <aside
-                            data-agent-area="panel-bam-ops"
-                            className="rounded-2xl border shadow-sm overflow-hidden bg-white"
-                        >
+                        <aside data-agent-area="panel-bam-ops" className="rounded-2xl border shadow-sm overflow-hidden bg-white">
                             <div className="px-3 sm:px-4 py-2 border-b bg-gray-50 flex items-center justify-between">
                                 <div className="font-semibold">Área BAM · Ops</div>
                                 <div className="flex items-center gap-2">
@@ -327,23 +306,24 @@ export default function BamiHub() {
                                     <button className="btn btn-sm whitespace-nowrap" onClick={() => setShowForm(true)}>Nuevo caso</button>
                                 </div>
                             </div>
-                            <div className="p-3 sm:p-4">
-                                <BamOpsPanel />
-                            </div>
+                            <div className="p-3 sm:p-4"><BamOpsPanel /></div>
                         </aside>
                     )}
                 </div>
             </section>
 
-            {/* Simulador móvil */}
+            {/* Simulador */}
             {showMobile && (
                 <BamMobileSimulator open={showMobile} onClose={() => setShowMobile(false)} />
             )}
 
-            {/* MODALES DESKTOP */}
+            {/* MODAL Tracker */}
             {showTracker && !showMobile && (
                 <div className="fixed inset-0 z-[70]">
-                    <div className="absolute inset-0 bg-black/40" onClick={() => setShowTracker(false)} />
+                    <div
+                        className="absolute inset-0 bg-black/40"
+                        onClick={() => { window.__BAMI_USER_CLOSED_TRACKER__ = Date.now(); setShowTracker(false) }}
+                    />
                     <div className="absolute left-1/2 -translate-x-1/2 top-2 sm:top-4 w-[96vw] max-w-5xl">
                         <div className="card border shadow-2xl rounded-2xl overflow-hidden max-h-[90svh]">
                             <div className="flex items-center justify-between px-3 sm:px-4 py-2 bg-gray-50 border-b">
@@ -351,7 +331,7 @@ export default function BamiHub() {
                                     <img src="/BAMI.svg" alt="BAMI" className="w-5 h-5 rounded-full" />
                                     <span>Seguimiento del expediente</span>
                                 </div>
-                                <button className="btn" onClick={() => setShowTracker(false)}>Cerrar</button>
+                                <button className="btn" onClick={() => { window.__BAMI_USER_CLOSED_TRACKER__ = Date.now(); setShowTracker(false) }}>Cerrar</button>
                             </div>
                             <div className="p-3 sm:p-4 overflow-auto">
                                 <CaseTracker active={true} />
@@ -361,6 +341,7 @@ export default function BamiHub() {
                 </div>
             )}
 
+            {/* MODAL Form */}
             {showForm && !showMobile && (
                 <div className="fixed inset-0 z-[70] grid place-items-center p-3 sm:p-4">
                     <div className="absolute inset-0 bg-black/40" onClick={() => setShowForm(false)} />
@@ -377,7 +358,7 @@ export default function BamiHub() {
                 </div>
             )}
 
-            {/* === AGENTE BAMI (globo inferior derecho con Autopilot) === */}
+            {/* HUD del agente */}
             <BamiAgent
                 caseData={c}
                 product={product}
@@ -388,10 +369,7 @@ export default function BamiHub() {
                     validateEverywhere,
                     advisorEverywhere,
                     openTracker: () => setShowTracker(true),
-                    openSimulator: () => {
-                        setShowMobile(true)
-                        setTimeout(() => window.dispatchEvent(new Event('sim:open')), 80)
-                    },
+                    openSimulator: () => { setShowMobile(true); setTimeout(() => window.dispatchEvent(new Event('sim:open')), 80) },
                 }}
             />
         </main>
