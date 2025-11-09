@@ -1,6 +1,5 @@
 // src/components/CaseTracker.jsx
 // Simulación controlada por evento único; nunca retrocede porcentaje/etapa; sin watchdogs que relancen.
-// Ahora también escucha el evento legacy `bami:sim:runTracker` y avanza correctamente más allá de "requiere".
 
 import React, { useEffect, useRef, useState } from 'react'
 import { getCase, refreshTracker } from '../lib/caseStore.js'
@@ -104,7 +103,7 @@ export default function CaseTracker({ active = true }) {
         timerRef.current = window.setTimeout(next, steps[0].delay)
     }
 
-    // 🚦 Disparadores de simulación (soporta nuevo y legacy)
+    // 🚦 ÚNICO disparador de simulación (evita loops)
     useEffect(() => {
         const onSim = (e) => {
             const runId = e?.detail?.runId || 'default'
@@ -112,20 +111,11 @@ export default function CaseTracker({ active = true }) {
             lastRunIdRef.current = runId
             runDemo()
         }
-        const onLegacy = () => {
-            const runId = `legacy-${Date.now()}`
-            if (runId === lastRunIdRef.current) return
-            lastRunIdRef.current = runId
-            runDemo()
-        }
         window.addEventListener('tracker:simulate:start', onSim)
-        window.addEventListener('bami:sim:runTracker', onLegacy)
         return () => {
             window.removeEventListener('tracker:simulate:start', onSim)
-            window.removeEventListener('bami:sim:runTracker', onLegacy)
             clearTimeout(timerRef.current)
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [c?.percent])
 
     if (!c) {
@@ -175,8 +165,8 @@ export default function CaseTracker({ active = true }) {
                         <div className="flex flex-wrap gap-2">
                             {missing.map((d) => (
                                 <span key={d} className="px-2 py-1 rounded-full text-xs bg-white border capitalize">
-                                  {d.replaceAll('_', ' ')}
-                                </span>
+                  {d.replaceAll('_', ' ')}
+                </span>
                             ))}
                         </div>
                     ) : (

@@ -139,59 +139,6 @@ function buildDemoData() {
     }
 }
 
-/* ------------------------------ Normalizador de snapshots externos ------------------------------ */
-// Convierte un snapshot recibido por `BAMI:OPS_SNAPSHOT` (p.ej. desde uiOrchestrator)
-// al formato que usa este panel.
-function normalizeOpsSnapshot(s) {
-    // Si ya viene en el formato del panel, úsalo tal cual
-    if (s && s.totals && s.funnel) return s
-
-    // Formato alterno esperado:
-    // {
-    //   leadsTotales, aprobados, alternativa, enRevision, pendientesProm,
-    //   atendidos, generados,
-    //   distEtapas: { requiere, recibido, enRevision, aprobado, alternativa }
-    // }
-    const total = s?.leadsTotales ?? 0
-    const aprobado = s?.aprobados ?? 0
-    const alternativa = s?.alternativa ?? 0
-    const en_revision = s?.enRevision ?? 0
-    const recibido = s?.distEtapas?.recibido ?? 0
-    const requiere = s?.distEtapas?.requiere ?? Math.max(0, total - (recibido + en_revision + aprobado + alternativa))
-
-    const by_product = {
-        'Tarjeta de Crédito': Math.round(total * 0.4),
-        'Préstamo Personal': Math.round(total * 0.3),
-        'Hipoteca': Math.round(total * 0.15),
-        'PyME': total - (Math.round(total * 0.4) + Math.round(total * 0.3) + Math.round(total * 0.15)),
-    }
-
-    return {
-        totals: {
-            cases: total,
-            aprobados: aprobado,
-            alternativas: alternativa,
-            en_revision,
-            approval_rate: total ? (aprobado / total) : 0,
-            missing_avg: s?.pendientesProm ?? 1.0,
-            avg_response_minutes: 48,
-        },
-        funnel: { requiere, recibido, en_revision, aprobado, alternativa },
-        sla: { avg_minutes: 37 },
-        csat: { avg: 4.6, responses: 120 },
-        by_product,
-        leads: Array.from({ length: Math.min(total, 22) }).map((_, i) => ({
-            id: `L${(2000 + i)}`,
-            product: Object.keys(by_product)[i % 4],
-            channel: ['web','app','whatsapp','sucursal'][i % 4],
-            applicant: { name: ['María','Luis','Karla','Diego','Sofía','Jorge'][i % 6] + ' ' + ['Pérez','Gómez','López','Ramírez'][i % 4] },
-            stage: ['requiere','recibido','en_revision','aprobado','alternativa'][i % 5],
-            missing_count: (i % 3),
-            created_at: Date.now() - i * 3600_000
-        })),
-    }
-}
-
 /* ------------------------------ Main panel ------------------------------ */
 export default function BamOpsPanel() {
     // Autologin DEMO: nunca pedimos credenciales
@@ -213,18 +160,6 @@ export default function BamOpsPanel() {
     useEffect(() => {
         // Solo una vez para evitar “flicker” y cumplir “mostrar una vez”
         fetchDataOnce()
-    }, [])
-
-    // Permite que Autopilot "inyecte" un snapshot y llene todo al iniciar
-    useEffect(() => {
-        const onSnap = (ev) => {
-            const snap = ev?.detail || window.__BAMI_OPS_SNAPSHOT
-            if (!snap) return
-            setData(normalizeOpsSnapshot(snap))
-        }
-        window.addEventListener('BAMI:OPS_SNAPSHOT', onSnap)
-        if (window.__BAMI_OPS_SNAPSHOT) onSnap({ detail: window.__BAMI_OPS_SNAPSHOT })
-        return () => window.removeEventListener('BAMI:OPS_SNAPSHOT', onSnap)
     }, [])
 
     // -------- Derivados ----------
@@ -424,7 +359,7 @@ export default function BamOpsPanel() {
             <div className="mt-6 p-4 bg-gray-50 rounded-xl">
                 <div className="font-semibold mb-2">Etapa actual de cada lead</div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {leadsCompact.map((row) => (
+                    {(data?.leads || []).slice(0, 14).map((row) => (
                         <div key={row.id} className="p-3 rounded-xl border bg-white flex items-center justify-between gap-3">
                             <div className="min-w-0">
                                 <div className="text-sm font-semibold truncate">{row.applicant?.name || row.id}</div>
@@ -433,7 +368,7 @@ export default function BamOpsPanel() {
                             <Pill color={row.stage}>{row.stage.replace('_',' ')}</Pill>
                         </div>
                     ))}
-                    {!leadsCompact.length && <div className="text-sm text-gray-500">Sin datos.</div>}
+                    {!((data?.leads || []).length) && <div className="text-sm text-gray-500">Sin datos.</div>}
                 </div>
             </div>
 
