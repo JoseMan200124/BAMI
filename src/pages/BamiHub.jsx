@@ -61,18 +61,30 @@ export default function BamiHub() {
         window.addEventListener('ui:tracker:open', onTrackerOpen)
         window.addEventListener('ui:tracker:toggle', onTrackerToggle)
         window.addEventListener('ui:tracker:close', onTrackerClose)
+        // 🔁 Alias para el orquestador (fallback)
+        window.addEventListener('bami:ui:openTracker', onTrackerOpen)
+
         window.addEventListener('ui:form:open', onFormOpen)
         window.addEventListener('ui:sim:close', onSimClose)
         window.addEventListener('ui:closeAll', onCloseAll)
+
+        // Si el Autopilot anuncia fin, liberamos y permitimos cerrar si desea el usuario
+        const onAgentStop = () => {
+            // Esto NO cierra nada, sólo asegura que los locks no bloqueen futuras interacciones
+            // (la lógica de cierre ya respeta window.__BAMI_LOCK_TRACKER__)
+        }
+        window.addEventListener('bami:agent:stop', onAgentStop)
 
         return () => {
             window.removeEventListener('bami:caseUpdate', onU)
             window.removeEventListener('ui:tracker:open', onTrackerOpen)
             window.removeEventListener('ui:tracker:toggle', onTrackerToggle)
             window.removeEventListener('ui:tracker:close', onTrackerClose)
+            window.removeEventListener('bami:ui:openTracker', onTrackerOpen)
             window.removeEventListener('ui:form:open', onFormOpen)
             window.removeEventListener('ui:sim:close', onSimClose)
             window.removeEventListener('ui:closeAll', onCloseAll)
+            window.removeEventListener('bami:agent:stop', onAgentStop)
         }
     }, [])
 
@@ -178,7 +190,7 @@ export default function BamiHub() {
                         </div>
                     </div>
 
-                    {/* Toolbar: SIN WRAP (scroll horizontal si se llena) */}
+                    {/* Toolbar */}
                     <div
                         className="hidden sm:flex items-center gap-2 flex-nowrap overflow-x-auto whitespace-nowrap pl-2"
                         style={{ scrollbarWidth: 'none' }}
@@ -208,7 +220,7 @@ export default function BamiHub() {
                             ))}
                         </div>
 
-                        {/* Acciones principales: nunca hacen wrap */}
+                        {/* Acciones principales */}
                         <div className="flex items-center gap-2 flex-nowrap">
                             <button
                                 data-agent-id="btn-simular-top"

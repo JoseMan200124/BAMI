@@ -1,9 +1,8 @@
 // src/lib/uiOrchestrator.js
 // Orquestador del Agente (Autopilot) + Cursor programático (SVG).
-// - Mueve un cursor propio, hace click con animación.
-// - Abre el Tracker y lo mantiene abierto con un "candado".
-// - Lanza la simulación del tracker (eventos a CaseTracker).
-// - No modifica tu panel; se engancha por texto/atributos.
+// - Cursor AHORA está OCULTO por defecto; aparece sólo durante Autopilot y se oculta al terminar.
+// - Lock del tracker se libera automáticamente al finalizar para permitir cerrar e interactuar.
+// - Bridge de eventos: también dispara `tracker:simulate:start` para que CaseTracker avance.
 
 (function () {
     if (window.__BAMI_UI_ORCH_READY__) return
@@ -84,6 +83,11 @@
     layer.appendChild(pulse)
     document.body.appendChild(layer)
 
+    // 🔒 Oculto por defecto: sólo se muestra durante el Autopilot
+    layer.style.display = 'none'
+    const showCursor = () => { layer.style.display = 'block' }
+    const hideCursor = () => { layer.style.display = 'none' }
+
     let cx = Math.round(window.innerWidth * 0.05)
     let cy = Math.round(window.innerHeight * 0.1)
     let raf
@@ -158,7 +162,7 @@
     function closeFloatersExceptTracker() {
         const tracker = findTrackerContainer()
         const floats = Array.from(
-            document.querySelectorAll('[role="dialog"], [data-modal], .modal, .sheet, .drawer, .overlay, .backdrop, .DialogOverlay, .ant-modal-wrap, .MuiDialog-root')
+            document.querySelectorAll('[role="dialog"], [data-modal], .modal, .sheet, .drawer, .overlay, .backdrop, .DialogOverlay, .MuiDialog-root')
         )
         for (const f of floats) {
             if (tracker && (tracker === f || f.contains(tracker))) continue // no cerrar ni su contenedor
@@ -184,6 +188,8 @@
 
     function setTrackerLock(on) {
         trackerLock = !!on
+        // reflejamos en global para que la UI pueda consultarlo
+        window.__BAMI_LOCK_TRACKER__ = trackerLock
         if (!on) {
             trackerObserver?.disconnect?.()
             trackerObserver = null
@@ -195,7 +201,6 @@
             if (!trackerLock) return
             const exists = !!findTrackerContainer()
             if (!exists) {
-                // reabrir suavemente
                 openTracker(true).catch(() => {})
             }
         })
@@ -204,7 +209,6 @@
 
     async function openTracker(silent = false) {
         closeFloatersExceptTracker()
-        // si ya está, listo
         if (findTrackerContainer()) return true
 
         // candidatos por atributo o texto
@@ -212,10 +216,9 @@
             document.querySelector('[data-bami-open="tracker"], [data-testid="open-tracker"]') ||
             findByText(['abrir tracker', 'seguimiento del expediente', 'tracker'])
 
-        // fallback: tabs superiores que digan "Tracker"
         const tab = findByText(['tracker'])
-
         const target = btn || tab
+
         if (target) {
             if (!silent) {
                 const r = target.getBoundingClientRect()
@@ -224,12 +227,12 @@
             await clickElement(target)
             await sleep(220)
         } else {
-            // evento para que tu app lo abra si lo escucha
+            // 🔁 Fallback: pedimos a la app que lo abra (BamiHub ahora escucha 'bami:ui:openTracker')
             try { window.dispatchEvent(new Event('bami:ui:openTracker')) } catch {}
             await sleep(300)
         }
 
-        // Si aún no aparece, intentamos de nuevo por texto
+        // Segundo intento si aún no aparece
         if (!findTrackerContainer()) {
             const again = findByText(['abrir tracker', 'seguimiento del expediente', 'tracker'])
             if (again) { await clickElement(again); await sleep(240) }
@@ -239,12 +242,30 @@
     }
 
     // -------------------------------------------------------
+    // Bridge de simulación para CaseTracker
+    // -------------------------------------------------------
+    // Si otro módulo emite bami:sim:runTracker, reenviamos al canal que CaseTracker sí escucha.
+    window.addEventListener('bami:sim:runTracker', () => {
+        try {
+            window.dispatchEvent(new CustomEvent('tracker:simulate:start', { detail: { runId: `bridge-${Date.now()}` } }))
+        } catch {}
+    })
+
+    // -------------------------------------------------------
     // Escenario del Agente
     // -------------------------------------------------------
+    async function finishAgent() {
+        setTrackerLock(false)
+        window.__BAMI_AGENT_ACTIVE__ = false
+        hideCursor()
+        try { window.dispatchEvent(new Event('bami:agent:stop')) } catch {}
+    }
+
     async function runAgentScenario() {
         window.__BAMI_AGENT_ACTIVE__ = true
+        showCursor()
 
-        // movimiento inicial para que SIEMPRE se vea el cursor
+        // movimiento inicial para que SIEMPRE se vea el cursor sólo durante Autopilot
         await moveCursorTo(Math.round(innerWidth * 0.25), Math.round(innerHeight * 0.25), 360)
         await moveCursorTo(Math.round(innerWidth * 0.70), Math.round(innerHeight * 0.20), 360)
 
@@ -252,13 +273,14 @@
         await openTracker(false)
         setTrackerLock(true)
 
-        // 2) Lanzar simulación del tracker (múltiples disparos por seguridad)
-        for (let i = 0; i < 3; i++) {
+        // 2) Lanzar simulación del tracker (en ambos canales)
+        for (let i = 0; i < 2; i++) {
+            try { window.dispatchEvent(new CustomEvent('tracker:simulate:start', { detail: { runId: `orch-${Date.now()}-${i}` } })) } catch {}
             try { window.dispatchEvent(new Event('bami:sim:runTracker')) } catch {}
             await sleep(250)
         }
 
-        // 3) Si hay botón "Subir documentos (sim)" lo clicamos antes de la simulación
+        // 3) Si hay botón "Subir documentos (sim)" lo clicamos
         const uploadBtn =
             document.querySelector('[data-bami-upload-sim]') ||
             findByText(['subir documentos (sim)', 'subir documentos', 'simular subida'])
@@ -267,9 +289,10 @@
             await clickElement(uploadBtn)
             await sleep(400)
             try { window.dispatchEvent(new Event('bami:sim:runTracker')) } catch {}
+            try { window.dispatchEvent(new CustomEvent('tracker:simulate:start', { detail: { runId: `orch-retry-${Date.now()}` } })) } catch {}
         }
 
-        // 4) Pequeño recorrido del cursor por la UI (para que lo veas navegar)
+        // 4) Pequeño recorrido del cursor por la UI
         const scanPoints = [
             [innerWidth * 0.85, innerHeight * 0.30],
             [innerWidth * 0.65, innerHeight * 0.60],
@@ -277,6 +300,10 @@
         ]
         for (const [x, y] of scanPoints) await moveCursorTo(Math.round(x), Math.round(y), 420)
         clickAnim()
+
+        // ✅ Fin del Autopilot: liberamos candado y ocultamos cursor
+        await sleep(400)
+        await finishAgent()
     }
 
     // -------------------------------------------------------
@@ -285,18 +312,25 @@
     window.addEventListener('bami:agent:start', runAgentScenario)
     window.addEventListener('bami:agent:openTracker', () => { openTracker(false) })
     window.addEventListener('bami:agent:showTracker', () => { openTracker(false) })
+    window.addEventListener('bami:agent:stop', () => { /* alias externo */ })
+    window.addEventListener('bami:agent:end', () => { /* alias externo */ finishAgent() })
+    window.addEventListener('bami:agent:cancel', () => { finishAgent() })
+
     window.addEventListener('bami:cursor:forceShow', () => {
-        layer.style.display = 'block'
+        showCursor()
         setCursor(cx + 0.01, cy + 0.01) // “nudge” para asegurar repintado
     })
     window.addEventListener('beforeunload', () => setTrackerLock(false))
 
-    // API útil para pruebas en consola
+    // API útil para consola
     window.BAMI = Object.assign(window.BAMI || {}, {
         openTracker,
         runAgentScenario,
+        stopAgent: finishAgent,
         _cursorMoveTo: moveCursorTo,
         _cursorClickAt: clickAt,
         _lockTracker: setTrackerLock,
+        _showCursor: showCursor,
+        _hideCursor: hideCursor,
     })
 })()
