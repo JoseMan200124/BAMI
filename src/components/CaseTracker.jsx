@@ -1,14 +1,11 @@
 // src/components/CaseTracker.jsx
 // Simulación controlada por evento único; nunca retrocede porcentaje/etapa; sin watchdogs que relancen.
 // Ahora también escucha el evento legacy `bami:sim:runTracker` y avanza correctamente más allá de "requiere".
-// Además, escucha `BAMI:TRACKER_ANIMATE` para animar más lento/smooth y cerrar el tracker al finalizar.
 
 import React, { useEffect, useRef, useState } from 'react'
 import { getCase, refreshTracker } from '../lib/caseStore.js'
 import StageTimeline from './StageTimeline.jsx'
 import ProgressRing from './ProgressRing.jsx'
-
-// Asegura que el orquestador esté cargado (botón Autopilot, snapshots OPS, etc.)
 import '../lib/uiOrchestrator.js'
 
 function useGlobalTrackerPolling(active = true) {
@@ -81,7 +78,6 @@ export default function CaseTracker({ active = true }) {
         } catch {}
     }
 
-    // Secuencia base (tiempos originales)
     const stagesSequence = [
         { stage: 'requiere',    percent: 10,  delay: 500,  missing: ['dpi', 'selfie', 'comprobante_domicilio'], log: 'Expediente iniciado.' },
         { stage: 'recibido',    percent: 35,  delay: 900,  missing: ['selfie', 'comprobante_domicilio'],       log: 'Recepción confirmada.' },
@@ -89,7 +85,6 @@ export default function CaseTracker({ active = true }) {
         { stage: 'aprobado',    percent: 100, delay: 900,  missing: [],                                        log: 'Autorizado.' },
     ]
 
-    // Ejecuta la demo con los delays de stagesSequence
     const runDemo = () => {
         clearTimeout(timerRef.current)
         const startIdx = Math.max(0, stagesSequence.findIndex(s => (c?.percent ?? 0) <= s.percent))
@@ -101,47 +96,6 @@ export default function CaseTracker({ active = true }) {
         let i = 1
         const next = () => {
             if (i >= steps.length) { setSim(s => ({ ...s, on: false })); return }
-            setSim(s => ({ ...s, ...steps[i] }))
-            pushToStore(steps[i])
-            timerRef.current = window.setTimeout(next, steps[i].delay)
-            i++
-        }
-        timerRef.current = window.setTimeout(next, steps[0].delay)
-    }
-
-    // Ejecuta la demo escalando tiempos a un total deseado; opcionalmente cierra el modal al final
-    const runDemoScaled = (totalDuration = 5200, closeWhenDone = false) => {
-        clearTimeout(timerRef.current)
-
-        // Determinar desde dónde empezar según % actual
-        const startIdx = Math.max(0, stagesSequence.findIndex(s => (c?.percent ?? 0) <= s.percent))
-        const base = stagesSequence.slice(startIdx)
-        if (!base.length) { setSim(s => ({ ...s, on: false })); return }
-
-        // Escalar delays para que sumen totalDuration
-        const baseTotal = base.reduce((acc, s) => acc + (s.delay || 0), 0) || 1
-        const factor = Math.max(0.2, totalDuration / baseTotal)
-        const steps = base.map(s => ({ ...s, delay: Math.round((s.delay || 0) * factor) }))
-
-        setSim({ on: true, ...steps[0] })
-        pushToStore(steps[0])
-
-        let i = 1
-        const next = () => {
-            if (i >= steps.length) {
-                setSim(s => ({ ...s, on: false }))
-                if (closeWhenDone) {
-                    setTimeout(() => {
-                        const closeBtn =
-                            document.querySelector('[data-close-tracker]') ||
-                            Array.from(document.querySelectorAll('button, [role="button"]')).find(b =>
-                                b.textContent && b.textContent.trim().toLowerCase() === 'cerrar'
-                            )
-                        closeBtn?.click()
-                    }, 350)
-                }
-                return
-            }
             setSim(s => ({ ...s, ...steps[i] }))
             pushToStore(steps[i])
             timerRef.current = window.setTimeout(next, steps[i].delay)
@@ -171,17 +125,6 @@ export default function CaseTracker({ active = true }) {
             window.removeEventListener('bami:sim:runTracker', onLegacy)
             clearTimeout(timerRef.current)
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [c?.percent])
-
-    // 🎬 Soporte para animación lenta + cierre desde el orquestador
-    useEffect(() => {
-        const onAnimate = (e) => {
-            const { duration = 5200, closeWhenDone = false } = (e && e.detail) || {}
-            runDemoScaled(duration, !!closeWhenDone)
-        }
-        window.addEventListener('BAMI:TRACKER_ANIMATE', onAnimate)
-        return () => window.removeEventListener('BAMI:TRACKER_ANIMATE', onAnimate)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [c?.percent])
 
