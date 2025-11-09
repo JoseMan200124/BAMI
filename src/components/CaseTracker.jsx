@@ -1,6 +1,7 @@
 // src/components/CaseTracker.jsx
-// Simulación controlada por evento único; nunca retrocede porcentaje/etapa; sin watchdogs que relancen.
-// Ahora también escucha el evento legacy `bami:sim:runTracker` y avanza correctamente más allá de "requiere".
+// Mantiene la simulación por eventos. Aunque active={false}, sigue escuchando
+// 'tracker:simulate:start' (gracias a que BamiHub monta una instancia oculta).
+// Secuencia visible: requiere (10) → recibido (35) → en_revision (70) → aprobado (100).
 
 import React, { useEffect, useRef, useState } from 'react'
 import { getCase, refreshTracker } from '../lib/caseStore.js'
@@ -61,8 +62,7 @@ export default function CaseTracker({ active = true }) {
             const now = getCase() || {}
             const curPct = now.percent ?? 0
             const newPct = step.percent ?? curPct
-            // ⛔ no retroceder
-            if (newPct < curPct) return
+            if (newPct < curPct) return // nunca retroceder
 
             const entry = { at: Date.now(), stage: step.stage, note: step.log || 'sim' }
             const next = {
@@ -87,7 +87,7 @@ export default function CaseTracker({ active = true }) {
 
     const runDemo = () => {
         clearTimeout(timerRef.current)
-        const startIdx = Math.max(0, stagesSequence.findIndex(s => (c?.percent ?? 0) <= s.percent))
+        const startIdx = Math.max(0, stagesSequence.findIndex(s => (c?.percent ?? 0) < s.percent))
         const steps = stagesSequence.slice(startIdx)
         if (!steps.length) { setSim(s => ({ ...s, on: false })); return }
         setSim({ on: true, ...steps[0] })
@@ -104,25 +104,17 @@ export default function CaseTracker({ active = true }) {
         timerRef.current = window.setTimeout(next, steps[0].delay)
     }
 
-    // 🚦 Disparadores de simulación (soporta nuevo y legacy)
+    // Eventos de simulación (CaseTracker escucha incluso oculto)
     useEffect(() => {
         const onSim = (e) => {
-            const runId = e?.detail?.runId || 'default'
-            if (runId === lastRunIdRef.current) return // ignorar duplicados
-            lastRunIdRef.current = runId
-            runDemo()
-        }
-        const onLegacy = () => {
-            const runId = `legacy-${Date.now()}`
+            const runId = e?.detail?.runId || `run-${Date.now()}`
             if (runId === lastRunIdRef.current) return
             lastRunIdRef.current = runId
             runDemo()
         }
         window.addEventListener('tracker:simulate:start', onSim)
-        window.addEventListener('bami:sim:runTracker', onLegacy)
         return () => {
             window.removeEventListener('tracker:simulate:start', onSim)
-            window.removeEventListener('bami:sim:runTracker', onLegacy)
             clearTimeout(timerRef.current)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
