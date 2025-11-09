@@ -12,13 +12,13 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import {
-    Home, ArrowLeft, Send as SendIcon, MessageSquareMore, X, FileUp, FolderOpen,
+    Home, Send as SendIcon, MessageSquareMore, X, FileUp, FolderOpen,
     FileText, UserRound, CreditCard, CheckCircle2
 } from 'lucide-react'
 
 export default function BamMobileSimulator() {
     const [open, setOpen] = useState(false)
-    const [view, setView] = useState('home') // 'home' | 'upload' | 'cliente' | 'productos' | 'chat'
+    const [view, setView] = useState('home') // 'home' | 'upload' | 'cliente' | 'productos'
     const [uploading, setUploading] = useState(false)
     const [chatOpen, setChatOpen] = useState(false)
     const [chatInput, setChatInput] = useState('')
@@ -324,7 +324,3 @@ export default function BamMobileSimulator() {
         </div>
     )
 }
-
-// Icon alias
-function X(props){ return <X.Icon {...props}/> }
-X.Icon = X
