@@ -1,9 +1,8 @@
 // src/lib/uiOrchestrator.js
-// Orquestador del Agente (Autopilot) + Cursor programático (SVG).
-// - Mueve un cursor propio, hace click con animación.
+// Orquestador del Agente (Autopilot) SIN cursor programático.
 // - Abre el Tracker y lo mantiene abierto con un "candado".
 // - Lanza la simulación del tracker (eventos a CaseTracker).
-// - No modifica tu panel; se engancha por texto/atributos.
+// - No dibuja ningún cursor ni hace animaciones de puntero.
 
 (function () {
     if (window.__BAMI_UI_ORCH_READY__) return
@@ -25,7 +24,12 @@
 
     const inViewport = (el) => {
         const r = el.getBoundingClientRect()
-        return r.top >= 0 && r.left >= 0 && r.bottom <= (window.innerHeight || document.documentElement.clientHeight) && r.right <= (window.innerWidth || document.documentElement.clientWidth)
+        return (
+            r.top >= 0 &&
+            r.left >= 0 &&
+            r.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
+            r.right <= (window.innerWidth || document.documentElement.clientWidth)
+        )
     }
 
     const qAllClickables = () =>
@@ -61,94 +65,30 @@
     }
 
     // -------------------------------------------------------
-    // Capa de CURSOR programático (SVG negro)
+    // ⚠️ Cursor programático eliminado
     // -------------------------------------------------------
-    const style = document.createElement('style')
-    style.textContent = `
-    #bami-cursor-layer{pointer-events:none;position:fixed;inset:0;z-index:2147483647 !important}
-    #bami-cursor-layer svg{position:absolute;left:0;top:0;transform:translate(-4px,-2px)}
-    #bami-cursor-pulse{position:absolute;left:0;top:0;width:2px;height:2px;border-radius:9999px;transform:translate(-1px,-1px);box-shadow:0 0 0 0 rgba(0,0,0,.35)}
-  `
-    document.head.appendChild(style)
-
-    const layer = document.createElement('div')
-    layer.id = 'bami-cursor-layer'
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-    svg.setAttribute('width', '22')
-    svg.setAttribute('height', '26')
-    svg.setAttribute('viewBox', '0 0 22 26')
-    svg.innerHTML = `<path d="M1 1 L1 21 L6 16 L10 25 L14 23 L9 14 L16 14 Z" fill="#000" fill-opacity=".98" stroke="rgba(0,0,0,.65)" stroke-width="1"/>`
-    const pulse = document.createElement('div')
-    pulse.id = 'bami-cursor-pulse'
-    layer.appendChild(svg)
-    layer.appendChild(pulse)
-    document.body.appendChild(layer)
-
-    let cx = Math.round(window.innerWidth * 0.05)
-    let cy = Math.round(window.innerHeight * 0.1)
-    let raf
-    function setCursor(x, y) {
-        cx = x
-        cy = y
-        svg.style.left = `${x}px`
-        svg.style.top = `${y}px`
-        pulse.style.left = `${x}px`
-        pulse.style.top = `${y}px`
-    }
-    setCursor(cx, cy)
-
-    function clickAnim() {
-        pulse.animate(
-            [{ boxShadow: '0 0 0 0 rgba(0,0,0,.45)' }, { boxShadow: '0 0 0 10px rgba(0,0,0,0)' }],
-            { duration: 280, easing: 'ease-out' }
-        )
-        svg.animate(
-            [{ transform: 'translate(-4px,-2px) scale(1)' }, { transform: 'translate(-4px,-2px) scale(.96)' }, { transform: 'translate(-4px,-2px) scale(1)' }],
-            { duration: 140 }
-        )
-    }
-
-    async function moveCursorTo(x, y, duration = 420) {
-        return new Promise((resolve) => {
-            const x0 = cx, y0 = cy
-            const t0 = performance.now()
-            cancelAnimationFrame(raf)
-            const step = (t) => {
-                const k = Math.min(1, (t - t0) / duration)
-                const ease = k < 0.5 ? 2 * k * k : -1 + (4 - 2 * k) * k // easeInOutQuad
-                const nx = x0 + (x - x0) * ease
-                const ny = y0 + (y - y0) * ease
-                setCursor(nx, ny)
-                if (k < 1) raf = requestAnimationFrame(step)
-                else resolve()
-            }
-            raf = requestAnimationFrame(step)
-        })
-    }
-
-    async function clickAt(x, y) {
-        await moveCursorTo(x, y, 260)
-        clickAnim()
-        const target = document.elementFromPoint(x, y)
-        if (target) {
-            for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click']) {
-                target.dispatchEvent(
-                    new MouseEvent(type, { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y })
-                )
-            }
-            try { target.focus?.() } catch {}
-            try { target.click?.() } catch {}
-        }
-    }
+    // Se mantienen funciones "stub" para no romper llamadas existentes.
+    async function moveCursorTo() { /* no-op */ }
+    function clickAnim() { /* no-op */ }
+    async function clickAt() { /* no-op */ }
 
     async function clickElement(el) {
         if (!el) return false
         try { el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' }) } catch {}
         await sleep(80)
-        const r = el.getBoundingClientRect()
-        const x = Math.round(r.left + Math.min(r.width * 0.7, r.width - 4))
-        const y = Math.round(r.top + Math.min(r.height * 0.6, r.height - 4))
-        await clickAt(x, y)
+        try { el.focus?.() } catch {}
+        try { el.click?.() } catch {}
+        // Por compatibilidad, también disparamos eventos básicos
+        try {
+            const r = el.getBoundingClientRect()
+            const x = Math.round(r.left + r.width / 2)
+            const y = Math.round(r.top + r.height / 2)
+            for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click']) {
+                el.dispatchEvent(
+                    new MouseEvent(type, { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y })
+                )
+            }
+        } catch {}
         return true
     }
 
@@ -158,14 +98,20 @@
     function closeFloatersExceptTracker() {
         const tracker = findTrackerContainer()
         const floats = Array.from(
-            document.querySelectorAll('[role="dialog"], [data-modal], .modal, .sheet, .drawer, .overlay, .backdrop, .DialogOverlay, .ant-modal-wrap, .MuiDialog-root')
+            document.querySelectorAll(
+                '[role="dialog"], [data-modal], .modal, .sheet, .drawer, .overlay, .backdrop, .DialogOverlay, .ant-modal-wrap, .MuiDialog-root'
+            )
         )
         for (const f of floats) {
             if (tracker && (tracker === f || f.contains(tracker))) continue // no cerrar ni su contenedor
             if (!isVisible(f)) continue
             // intenta botón de cerrar
-            const btn = f.querySelector('[data-close],[data-dismiss],[aria-label="Cerrar"],[aria-label="Close"],.btn-close,button.close')
-            if (btn) { try { btn.click() } catch {} }
+            const btn = f.querySelector(
+                '[data-close],[data-dismiss],[aria-label="Cerrar"],[aria-label="Close"],.btn-close,button.close'
+            )
+            if (btn) {
+                try { btn.click() } catch {}
+            }
             // si sigue visible, ocúltalo sin tocar el tracker
             const cs = getComputedStyle(f)
             if (cs.display !== 'none') {
@@ -218,8 +164,8 @@
         const target = btn || tab
         if (target) {
             if (!silent) {
-                const r = target.getBoundingClientRect()
-                await moveCursorTo(r.left + r.width / 2, r.top + r.height / 2, 380)
+                // mantenemos compatibilidad con API previa (no visualiza nada)
+                await moveCursorTo(0, 0, 0)
             }
             await clickElement(target)
             await sleep(220)
@@ -244,12 +190,8 @@
     async function runAgentScenario() {
         window.__BAMI_AGENT_ACTIVE__ = true
 
-        // movimiento inicial para que SIEMPRE se vea el cursor
-        await moveCursorTo(Math.round(innerWidth * 0.25), Math.round(innerHeight * 0.25), 360)
-        await moveCursorTo(Math.round(innerWidth * 0.70), Math.round(innerHeight * 0.20), 360)
-
         // 1) Abrir tracker y clavar
-        await openTracker(false)
+        await openTracker(true)
         setTrackerLock(true)
 
         // 2) Lanzar simulación del tracker (múltiples disparos por seguridad)
@@ -269,34 +211,23 @@
             try { window.dispatchEvent(new Event('bami:sim:runTracker')) } catch {}
         }
 
-        // 4) Pequeño recorrido del cursor por la UI (para que lo veas navegar)
-        const scanPoints = [
-            [innerWidth * 0.85, innerHeight * 0.30],
-            [innerWidth * 0.65, innerHeight * 0.60],
-            [innerWidth * 0.40, innerHeight * 0.55],
-        ]
-        for (const [x, y] of scanPoints) await moveCursorTo(Math.round(x), Math.round(y), 420)
-        clickAnim()
+        // 4) (Antes movíamos el cursor por la UI; eliminado)
+        clickAnim() // no-op para compatibilidad
     }
 
     // -------------------------------------------------------
     // Enganches globales
     // -------------------------------------------------------
     window.addEventListener('bami:agent:start', runAgentScenario)
-    window.addEventListener('bami:agent:openTracker', () => { openTracker(false) })
-    window.addEventListener('bami:agent:showTracker', () => { openTracker(false) })
-    window.addEventListener('bami:cursor:forceShow', () => {
-        layer.style.display = 'block'
-        setCursor(cx + 0.01, cy + 0.01) // “nudge” para asegurar repintado
-    })
+    window.addEventListener('bami:agent:openTracker', () => { openTracker(true) })
+    window.addEventListener('bami:agent:showTracker', () => { openTracker(true) })
+    // Evento legacy para “forzar mostrar cursor” — ahora no hace nada.
+    window.addEventListener('bami:cursor:forceShow', () => { /* no-op */ })
     window.addEventListener('beforeunload', () => setTrackerLock(false))
 
-    // API útil para pruebas en consola
+    // API útil para pruebas en consola (sin cursor)
     window.BAMI = Object.assign(window.BAMI || {}, {
         openTracker,
-        runAgentScenario,
-        _cursorMoveTo: moveCursorTo,
-        _cursorClickAt: clickAt,
-        _lockTracker: setTrackerLock,
+        runAgentScenario
     })
 })()
