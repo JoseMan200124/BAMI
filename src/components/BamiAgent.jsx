@@ -1,7 +1,6 @@
 // src/components/BamiAgent.jsx
-// Autopilot con Spotlight anti-overlay + segundo flujo "Cliente en desktop" (chat).
-// - Spotlight: crea un "hueco" alrededor del objetivo y lo eleva sobre cualquier overlay.
-// - Cliente en desktop: escribe/enfoca chat, envía, pulsa chips, simula subida y valida con IA.
+// Ajuste clave: durante Autopilot se SUPRIME el tracker dentro del simulador para que se vea el “subir documentos”.
+// Se controla con window.__BAMI_SUPPRESS_SIM_TRACKER__ y se evita emitir 'sim:tracker:open' mientras corre el Autopilot.
 
 import React, { useEffect, useMemo, useRef, useState, useLayoutEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -16,6 +15,7 @@ const DUR = {
     preRatio: 0.55,
     settlePause: 380,
     clickHold: 420,
+    ripple: 900,
     halo: 800,
     betweenSteps: 220,
 }
@@ -29,7 +29,7 @@ const Z = {
 
 const wait = (ms) => new Promise(r => setTimeout(r, ms))
 
-/* ------------------------------ Utilidades DOM ------------------------------ */
+// ---------- Utilidades DOM ----------
 const HUD_ROOT_SELECTOR = '#bami-hud'
 const isInsideHUD = (el) => !!el?.closest?.(HUD_ROOT_SELECTOR)
 
@@ -37,7 +37,7 @@ const isVisible = (el) => {
     if (!el) return false
     if (isInsideHUD(el)) return false
     const cs = window.getComputedStyle(el)
-    if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0) return false
+    if (cs.visibility === 'hidden' || cs.display === 'none' || cs.opacity === '0') return false
     const r = el.getBoundingClientRect()
     if (!r.width || !r.height) return false
     const vw = window.innerWidth, vh = window.innerHeight, m = 8
@@ -136,36 +136,6 @@ export default function BamiAgent({ caseData, product, controls }) {
     const [halo, setHalo] = useState(null)
     const [tip, setTip] = useState(null)
 
-    // spotlight anti-overlay
-    const [spot, setSpot] = useState(null) // {x,y,r}
-    const spotlightOn = (el, pad=16) => {
-        if (!el) return
-        const r = el.getBoundingClientRect()
-        const cx = r.left + r.width/2 + (window.scrollX || 0)
-        const cy = r.top + r.height/2 + (window.scrollY || 0)
-        const rad = Math.sqrt((r.width*r.width + r.height*r.height))/2 + pad
-        setSpot({ x: cx, y: cy, r: rad })
-    }
-    const spotlightOff = () => setSpot(null)
-
-    // eleva objetivo por encima de cualquier overlay/backdrop
-    const liftTarget = (el) => {
-        if (!el) return () => {}
-        const prev = {
-            z: el.style.zIndex,
-            pos: el.style.position,
-            pe: el.style.pointerEvents,
-        }
-        el.style.position = el.style.position || 'relative'
-        el.style.zIndex = String(Z.CURSOR + 2)
-        el.style.pointerEvents = 'auto'
-        return () => {
-            el.style.zIndex = prev.z
-            el.style.position = prev.pos
-            el.style.pointerEvents = prev.pe
-        }
-    }
-
     // portal a <body>
     const [portalRoot, setPortalRoot] = useState(null)
     useLayoutEffect(() => {
@@ -198,7 +168,7 @@ export default function BamiAgent({ caseData, product, controls }) {
         return () => mo.disconnect()
     }, [])
 
-    // Watchdog para cursor (que nunca se pierda de la pantalla)
+    // Watchdog para cursor
     useEffect(() => {
         const safePutOnScreen = () => {
             setCursor(c => {
@@ -326,10 +296,11 @@ export default function BamiAgent({ caseData, product, controls }) {
             ]
         }
         window.dispatchEvent(new CustomEvent('tracker:simulate:start', { detail }))
+        // Esto dispara la animación en el tracker (componente), pero ya NO abre el panel del simulador
         window.dispatchEvent(new Event('bami:sim:runTracker'))
     }
 
-    /* ------------------------------ Autopilot ROUTE ------------------------------ */
+    // Secuencia del recorrido
     const ROUTE = [
         {
             type: 'click',
@@ -349,6 +320,7 @@ export default function BamiAgent({ caseData, product, controls }) {
             success: () => !!document.querySelector('[data-expediente], .toast-expediente, [data-case-created]'),
             forceSuccessIfRun: true,
             after: async () => {
+                // Abrimos tracker SOLO en UI principal (NO en simulador durante Autopilot)
                 window.dispatchEvent(new Event('ui:tracker:open'))
                 window.dispatchEvent(new Event('bami:agent:openTracker'))
             }
@@ -362,12 +334,16 @@ export default function BamiAgent({ caseData, product, controls }) {
             success: () => !!document.querySelector('[data-upload-portal],[data-dropzone],.upload-modal'),
             forceSuccessIfRun: true,
             after: async () => {
+                // Señales de demo a cualquier uploader/bridge existente
                 window.dispatchEvent(new Event('upload:demo'))
                 window.dispatchEvent(new Event('ui:upload:demo'))
                 window.dispatchEvent(new Event('sim:upload:demo'))
+
+                // Mantener tracker abierto SOLO en escritorio, y avanzar simulación
                 setTimeout(() => {
                     window.dispatchEvent(new Event('ui:tracker:open'))
                     window.dispatchEvent(new Event('bami:agent:openTracker'))
+                    // NO abrimos el tracker del simulador (se suprime durante Autopilot)
                     simulateTracker()
                 }, 900)
             }
@@ -381,6 +357,7 @@ export default function BamiAgent({ caseData, product, controls }) {
                 controls?.openTracker?.()
                 window.dispatchEvent(new Event('bami:agent:openTracker'))
                 window.dispatchEvent(new Event('bami:sim:runTracker'))
+                // NO emitir 'sim:tracker:open' durante Autopilot
                 window.__BAMI_LOCK_TRACKER__ = true
             },
             success: () => !!document.querySelector('[data-agent-area="tracker"],[data-tracker-panel],.tracker-panel'),
@@ -399,97 +376,6 @@ export default function BamiAgent({ caseData, product, controls }) {
         { type: 'speak', id: 'end', say: 'Listo. Flujo presentado de inicio a fin.' }
     ]
 
-    /* ------------------------------ Segundo flujo: Cliente en desktop ------------------------------ */
-    const runClientFlow = async () => {
-        logLine('Ahora, flujo del Cliente en desktop (chat BAMI).')
-
-        // Permitir que el chat ejecute acciones reales
-        window.__BAMI_AGENT_ACTIVE__ = false
-        window.__BAMI_LOCK_TRACKER__ = false
-        window.__BAMI_SUPPRESS_SIM_TRACKER__ = false
-
-        // Asegurar que el chat esté visible/enfocado
-        const input = await waitForTarget({
-            selectors: ['input[aria-label="Mensaje para BAMI"]'],
-            texts: [],
-            kind: 'focus',
-            timeout: 2500
-        })
-        if (input) {
-            const cleanup = liftTarget(input)
-            spotlightOn(input, 18)
-            await moveToEl(input, 1.2)
-            await showTip(input, 'Escribimos al chat del cliente.', 1200)
-            spotlightOff(); cleanup()
-        }
-
-        // Type + Send (mensaje real para que procese el widget)
-        const typeAndSend = async (text) => {
-            const inp = await waitForTarget({ selectors: ['input[aria-label="Mensaje para BAMI"]'], kind:'focus', timeout: 1500 })
-            const btn = await waitForTarget({ selectors: ['button[aria-label="Enviar mensaje"]'], kind:'click', timeout: 1500 })
-            if (inp && btn) {
-                const cleanupIn = liftTarget(inp); const cleanupBtn = liftTarget(btn)
-                spotlightOn(inp, 16)
-                await moveToEl(inp, 0.9)
-                // set value programáticamente + evento input
-                const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
-                setter?.call(inp, text)
-                inp.dispatchEvent(new Event('input', { bubbles: true }))
-                spotlightOff()
-                spotlightOn(btn, 16)
-                await moveToEl(btn, 0.8)
-                await clickEffect()
-                btn.click()
-                spotlightOff(); cleanupIn(); cleanupBtn()
-                await wait(1000)
-            } else {
-                // fallback: push visual
-                window.dispatchEvent(new CustomEvent('ui:msg', { detail: { role: 'user', text } }))
-                await wait(800)
-            }
-        }
-
-        await typeAndSend('Quiero aplicar a tarjeta de crédito')
-        await wait(900)
-
-        // Click en acción rápida "Subir docs"
-        const clickByText = async (label) => {
-            const target = await waitForTarget({
-                selectors: [],
-                texts: [label],
-                kind: 'click',
-                timeout: 2000
-            })
-            if (target) {
-                const cleanup = liftTarget(target)
-                spotlightOn(target, 16)
-                await moveToEl(target, 0.9)
-                await clickEffect()
-                target.click()
-                spotlightOff(); cleanup()
-                await wait(900)
-                return true
-            }
-            return false
-        }
-
-        await clickByText('Subir docs') || await clickByText('Subir documentos')
-        // simular subida también en desktop
-        window.dispatchEvent(new Event('ui:upload:demo'))
-        await wait(1200)
-
-        // Validar con IA (acciones rápidas)
-        await clickByText('Validar IA')
-        await wait(1600)
-
-        // Conectar Asesor (acciones rápidas)
-        await clickByText('Asesor')
-        await wait(1000)
-
-        logLine('Flujo de cliente completado.')
-    }
-
-    /* ------------------------------ Runners ------------------------------ */
     const showTipFor = async (el, text, kind) => {
         logLine(text)
         if (el && (kind === 'focus' || kind === 'click')) await showTip(el, text, 1300)
@@ -499,11 +385,8 @@ export default function BamiAgent({ caseData, product, controls }) {
         step?.before?.()
         const target = await waitForTarget({ ...(step.targets || {}), kind: 'focus' })
         if (target) {
-            const cleanup = liftTarget(target)
-            spotlightOn(target)
             await moveToEl(target)
             await showTipFor(target, step.say, 'focus')
-            spotlightOff(); cleanup()
         } else {
             await showTipFor(null, step.say, 'focus')
         }
@@ -515,20 +398,14 @@ export default function BamiAgent({ caseData, product, controls }) {
         step?.before?.()
         const target = await waitForTarget({ ...(step.targets || {}), kind: 'click' })
         if (target) {
-            const cleanup = liftTarget(target)
-            spotlightOn(target)
             await moveToEl(target)
             await showTipFor(target, step.say, 'click')
             await clickEffect()
-            try { // click visual + lógica extra del paso
-                target.click?.()
-                await Promise.resolve(step.run?.())
-            } catch {}
+            try { await Promise.resolve(step.run?.()) } catch {}
             await wait(600)
-            if (step.success && step.success()) { await Promise.resolve(step?.after?.()); spotlightOff(); cleanup(); return true }
-            if (step.forceSuccessIfRun && step.run) { await Promise.resolve(step?.after?.()); spotlightOff(); cleanup(); return true }
+            if (step.success && step.success()) { await Promise.resolve(step?.after?.()); return true }
+            if (step.forceSuccessIfRun && step.run) { await Promise.resolve(step?.after?.()); return true }
             await Promise.resolve(step?.after?.())
-            spotlightOff(); cleanup()
             return true
         }
         await showTipFor(null, step.say + ' (simulado)', 'click')
@@ -540,23 +417,22 @@ export default function BamiAgent({ caseData, product, controls }) {
 
     const runSpeak = async (step) => { step?.before?.(); logLine(step.say); await Promise.resolve(step?.after?.()); await wait(700); return true }
 
-    const runStep = async (step) => {
-        if (step.type === 'click') return runClick(step)
-        if (step.type === 'focus') return runFocus(step)
-        return runSpeak(step)
-    }
-
     const runDemo = async () => {
         if (running) return
         setRunning(true)
         logLine('Iniciando Autopilot…')
 
-        // 🔒 Señales globales
+        // 🔒 Señales globales para UX
         window.__BAMI_AGENT_ACTIVE__ = true
-        window.__BAMI_DISABLE_FLOATING__ = true
-        window.__BAMI_LOCK_TRACKER__ = true
+        window.__BAMI_DISABLE_FLOATING__ = true // desactiva chat flotante
+        window.__BAMI_LOCK_TRACKER__ = true     // evita cierre del tracker principal
+        // 🚫 Suprimir tracker del simulador para que se vea el "subir documentos"
         window.__BAMI_SUPPRESS_SIM_TRACKER__ = true
         window.dispatchEvent(new Event('sim:tracker:close'))
+
+        // Cursor presente desde el inicio
+        try { window.dispatchEvent(new Event('bami:cursor:forceShow')) } catch {}
+        window.dispatchEvent(new Event('bami:agent:start'))
 
         try {
             for (const step of ROUTE) {
@@ -564,7 +440,7 @@ export default function BamiAgent({ caseData, product, controls }) {
                 await wait(260)
             }
 
-            // Esperar fin de tracker (con margen)
+            // Espera a que el tracker termine (si envía señal); margen de seguridad
             await new Promise(resolve => {
                 let done = false
                 const h = () => { done = true; window.removeEventListener('bami:tracker:finished', h); resolve() }
@@ -572,201 +448,166 @@ export default function BamiAgent({ caseData, product, controls }) {
                 setTimeout(() => { if (!done) resolve() }, 1800)
             })
 
-            // Inyectar lead al panel OPS
-            try {
-                window.dispatchEvent(new CustomEvent('bami:ops:ingestLead', { detail: { case: getCase?.() || null } }))
-            } catch {}
+            // Inyectar lead “creado por BAMI” en OPS con datos del caso actual
+            const cc = getCase?.() || caseData || {}
+            window.dispatchEvent(new CustomEvent('bami:ops:ingestLead', {
+                detail: {
+                    case: {
+                        id: cc.id || `C-${Math.floor(Math.random()*900000)+100000}`,
+                        product: cc.product || 'Tarjeta de Crédito',
+                        channel: cc.channel || 'web',
+                        applicant: cc.applicant || { name: 'Cliente BAMI' },
+                        stage: 'aprobado'
+                    }
+                }
+            }))
 
-            // Cerrar cosas de la primera parte (dejamos tracker visible si quieres)
-            // closeEverything()  // si prefieres cerrar todo, descomenta
-
-            // 👉 Arranca flujo de cliente en desktop (chat)
-            await runClientFlow()
-
-            logLine('Demo completa.')
+            logLine('Flujo completado.')
         } finally {
-            // Reset flags pero mantén cursor visible para próximas demos
-            window.__BAMI_AGENT_ACTIVE__ = false
-            window.__BAMI_DISABLE_FLOATING__ = false
+            await wait(400)
+            setHalo(null); setTip(null)
+            setCursor(c => ({ ...c, show: true, clicking: false, transition: { type: 'tween', ease: EASE, duration: 0.8 } }))
+
+            // ⛔ Limpiar bloqueos y restablecer supresión del simulador
             window.__BAMI_LOCK_TRACKER__ = false
             window.__BAMI_SUPPRESS_SIM_TRACKER__ = false
+            closeEverything()
             setRunning(false)
+            setTimeout(()=>{ window.__BAMI_AGENT_ACTIVE__ = false }, 200)
         }
     }
 
-    /* ------------------------------ UI / HUD ------------------------------ */
-    const ControlBubble = (
-        <div className="fixed right-4 bottom-4 z-[1999980]">
-            <div className="flex items-center gap-2">
+    const runStep = async (step) => {
+        switch (step.type) {
+            case 'focus': return runFocus(step)
+            case 'click': return runClick(step)
+            case 'speak': return runSpeak(step)
+            default: return true
+        }
+    }
+
+    // Insight inicial (una línea)
+    useEffect(() => { if (insight) logLine(`🔎 ${insight}`) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+    // UI del HUD (botón + feed)
+    const hud = (
+        <div id="bami-hud" className="fixed right-4 bottom-4 z-[1999980]">
+            {/* Botón flotante */}
+            <div className="flex flex-col items-end gap-2 mb-2">
                 <button
-                    onClick={() => setOpen(v => !v)}
-                    className="rounded-full shadow-lg border bg-white w-14 h-14 grid place-items-center"
-                    aria-label="BAMI"
-                    title="BAMI"
+                    onClick={() => setOpen(v=>!v)}
+                    className="px-3 py-2 rounded-xl bg-black text-white shadow-lg border border-white/10 flex items-center gap-2 hover:bg-black/90"
+                    title="Abrir panel del agente"
                 >
-                    <img src="/BAMI.svg" alt="BAMI" className="w-10 h-10 rounded-full" />
+                    <Bot size={16}/> BAMI · HUD
                 </button>
                 <button
-                    onClick={() => runDemo()}
-                    className="hidden sm:inline-flex items-center gap-2 px-3 h-14 rounded-full shadow-lg border bg-black text-white"
-                    aria-label="Iniciar Autopilot"
-                    title="Iniciar Autopilot"
+                    onClick={running ? undefined : runDemo}
+                    className={`px-3 py-2 rounded-xl ${running ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-bami-yellow text-black hover:brightness-95'} shadow-lg border border-black/10 flex items-center gap-2`}
+                    title="Autopilot"
                 >
-                    <Play size={16}/> Autopilot
+                    {running ? <Activity size={16}/> : <Play size={16}/>}
+                    {running ? 'Autopilot en curso' : 'Iniciar Autopilot'}
                 </button>
             </div>
+
+            <AnimatePresence>
+                {open && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 12 }}
+                        transition={{ duration: 0.2 }}
+                        className="w-[360px] max-w-[92vw] rounded-2xl bg-white border shadow-2xl overflow-hidden"
+                    >
+                        <div className="h-10 px-3 bg-gray-50 border-b flex items-center justify-between">
+                            <div className="text-sm font-semibold flex items-center gap-2">
+                                <Sparkles size={16}/> Panel del agente
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={running ? undefined : runDemo}
+                                    className={`px-2 py-1 rounded-md text-xs ${running ? 'bg-gray-200 text-gray-600' : 'bg-bami-yellow text-black'}`}
+                                >
+                                    {running ? 'En curso' : 'Autopilot'}
+                                </button>
+                                <button onClick={()=>setOpen(false)} className="p-1 rounded-md hover:bg-gray-200" aria-label="Cerrar">
+                                    <XIcon size={14}/>
+                                </button>
+                            </div>
+                        </div>
+                        <div className="p-3 text-xs text-gray-700">
+                            <div className="mb-2">
+                                <div className="text-[11px] text-gray-500">Contexto</div>
+                                <div className="mt-1">{insight || '—'}</div>
+                            </div>
+                            <div className="text-[11px] text-gray-500 mb-1">Pasos</div>
+                            <div ref={feedRef} className="max-h-[220px] overflow-auto rounded-lg border p-2 space-y-1 bg-gray-50">
+                                {feed.map(f => (
+                                    <div key={f.id} className="flex items-start gap-2">
+                                        <span className="mt-[3px]"><MousePointer2 size={12}/></span>
+                                        <span className="leading-4">{f.text}</span>
+                                    </div>
+                                ))}
+                                {!feed.length && <div className="text-gray-500">Sin eventos aún.</div>}
+                            </div>
+                            <div className="mt-2 flex items-center justify-end gap-2">
+                                <button onClick={()=>{ setFeed([]) }} className="text-[11px] px-2 py-1 rounded-md border hover:bg-gray-50">Limpiar</button>
+                                <button onClick={closeEverything} className="text-[11px] px-2 py-1 rounded-md border hover:bg-gray-50">Cerrar overlays</button>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Cursor visual */}
+            <div className="bami-cursor-layer pointer-events-none fixed inset-0" style={{ zIndex: Z.CURSOR }}>
+                <motion.div
+                    initial={false}
+                    animate={{ x: cursor.x, y: cursor.y, opacity: cursor.show ? 1 : 0 }}
+                    transition={cursor.transition}
+                    className="absolute"
+                >
+                    <div className="relative">
+                        <div className="w-5 h-5 rounded-full bg-black/90 shadow-[0_0_0_2px_rgba(255,255,255,.7)]" />
+                    </div>
+                </motion.div>
+            </div>
+
+            {/* Halo de enfoque */}
+            <AnimatePresence>
+                {halo && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="fixed pointer-events-none"
+                        style={{ left: halo.x, top: halo.y, width: halo.w, height: halo.h, zIndex: Z.HALO }}
+                    >
+                        <div className="w-full h-full rounded-xl ring-4 ring-bami-yellow/60 ring-offset-2 ring-offset-transparent" />
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Tip flotante */}
+            <AnimatePresence>
+                {tip && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 4 }}
+                        transition={{ duration: 0.2 }}
+                        className="fixed pointer-events-none max-w-[260px] p-2 rounded-lg bg-black text-white text-xs shadow-xl"
+                        style={{ left: tip.x, top: tip.y, zIndex: Z.TIP }}
+                    >
+                        {tip.text}
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     )
 
-    const Panel = (
-        <AnimatePresence>
-            {open && (
-                <motion.div
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 12 }}
-                    transition={{ duration: 0.25, ease: EASE }}
-                    className="fixed right-4 bottom-24 z-[1999980] w-[min(92vw,380px)] rounded-2xl border bg-white shadow-2xl overflow-hidden"
-                >
-                    <div className="px-3 py-2 flex items-center justify-between border-b bg-gray-50">
-                        <div className="flex items-center gap-2">
-                            <img src="/BAMI.svg" alt="BAMI" className="w-5 h-5 rounded-full"/>
-                            <div className="font-semibold text-sm">BAMI · Autopilot</div>
-                        </div>
-                        <button className="p-1 rounded hover:bg-gray-200" onClick={()=>setOpen(false)} aria-label="Cerrar">
-                            <XIcon size={16}/>
-                        </button>
-                    </div>
-                    <div className="p-3 text-xs text-gray-600 border-b">
-                        <div className="flex items-center gap-2">
-                            <Activity size={14}/> <span className="truncate">{insight}</span>
-                        </div>
-                    </div>
-                    <div className="p-0">
-                        <div ref={feedRef} className="max-h-64 overflow-auto px-3 py-2 space-y-1.5 text-sm">
-                            {feed.map(f => (
-                                <div key={f.id} className="text-gray-700">
-                                    <span className="text-[11px] text-gray-500 mr-2">{new Date(f.t).toLocaleTimeString()}</span>
-                                    {f.text}
-                                </div>
-                            ))}
-                            {!feed.length && <div className="text-gray-500 text-sm">Sin eventos aún.</div>}
-                        </div>
-                    </div>
-                    <div className="p-3 border-t flex items-center justify-between">
-                        <button
-                            className="btn btn-dark px-3 h-10 rounded-xl inline-flex items-center gap-2"
-                            onClick={runDemo}
-                            disabled={running}
-                        >
-                            <Play size={16}/> {running ? 'Ejecutando…' : 'Iniciar Autopilot'}
-                        </button>
-                        <div className="flex items-center gap-2 text-gray-500 text-xs">
-                            <Bot size={14}/> <Sparkles size={14}/>
-                        </div>
-                    </div>
-                </motion.div>
-            )}
-        </AnimatePresence>
-    )
-
-    const CursorLayer = portalRoot && (
-        createPortal(
-            <div id="bami-hud" className="pointer-events-none">
-                {/* Spotlight anti-overlay */}
-                <AnimatePresence>
-                    {spot && (
-                        <motion.div
-                            key="spot"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="fixed inset-0"
-                            style={{
-                                zIndex: Z.HUD,
-                                background: 'rgba(0,0,0,0.50)',
-                                WebkitMaskImage: `radial-gradient(circle ${spot.r}px at ${spot.x}px ${spot.y}px, transparent ${spot.r}px, white ${spot.r}px)`,
-                                maskImage: `radial-gradient(circle ${spot.r}px at ${spot.x}px ${spot.y}px, transparent ${spot.r}px, white ${spot.r}px)`,
-                                pointerEvents: 'none'
-                            }}
-                        />
-                    )}
-                </AnimatePresence>
-
-                {/* Halo */}
-                <AnimatePresence>
-                    {halo && (
-                        <motion.div
-                            key={halo.key}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="absolute rounded-xl ring-2 ring-yellow-300"
-                            style={{
-                                zIndex: Z.HALO,
-                                left: halo.x - 4, top: halo.y - 4, width: halo.w + 8, height: halo.h + 8,
-                                boxShadow: '0 0 0 6px rgba(255,212,0,0.15)',
-                                pointerEvents: 'none'
-                            }}
-                        />
-                    )}
-                </AnimatePresence>
-
-                {/* Tip */}
-                <AnimatePresence>
-                    {tip && (
-                        <motion.div
-                            key={tip.key}
-                            initial={{ opacity: 0, y: 6 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 6 }}
-                            transition={{ duration: 0.2 }}
-                            className="absolute max-w-[260px] p-2 rounded-lg bg-black text-white text-xs shadow-xl"
-                            style={{ zIndex: Z.TIP, left: tip.x, top: tip.y }}
-                        >
-                            {tip.text}
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-
-                {/* Cursor */}
-                <motion.div
-                    className="bami-cursor-layer fixed w-5 h-5 rounded-full"
-                    animate={{ x: cursor.x, y: cursor.y }}
-                    transition={cursor.transition}
-                    style={{ zIndex: Z.CURSOR, translateX: '-50%', translateY: '-50%' }}
-                >
-                    <div className="relative">
-                        <div className="w-5 h-5 rounded-full bg-black shadow-[0_0_0_4px_rgba(0,0,0,0.2)]" />
-                        <div className="absolute inset-0 grid place-items-center">
-                            <MousePointer2 size={14} className="text-white opacity-90" />
-                        </div>
-                        <AnimatePresence>
-                            {cursor.clicking && (
-                                <motion.span
-                                    key="ripple"
-                                    initial={{ opacity: 0.7, scale: 0.4 }}
-                                    animate={{ opacity: 0, scale: 2.1 }}
-                                    exit={{ opacity: 0 }}
-                                    transition={{ duration: 0.9, ease: 'ease-out' }}
-                                    className="absolute inset-0 rounded-full border-2 border-yellow-300"
-                                />
-                            )}
-                        </AnimatePresence>
-                    </div>
-                </motion.div>
-            </div>,
-            portalRoot
-        )
-    )
-
-    return (
-        <>
-            {ControlBubble}
-            {Panel}
-            {CursorLayer}
-        </>
-    )
+    if (!portalRoot) return null
+    return createPortal(hud, portalRoot)
 }
