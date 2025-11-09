@@ -132,17 +132,12 @@ export default function BamiChatWidget({
     const greetedOnce = useRef(false)
     const [bodyPad, setBodyPad] = useState(88)
 
-    // === Estabilizador de layout: estilos globales locales (solo en este widget) ===
+    // === Estabilizador de layout: estilos locales ===
     const StableStyles = (
         <style
-            // Desactiva transiciones/animaciones dentro del contenedor estable,
-            // desactiva el overflow anchoring y fija el gutter del scrollbar.
             dangerouslySetInnerHTML={{
                 __html: `
-.bami-stable, .bami-stable * {
-  transition: none !important;
-  animation: none !important;
-}
+.bami-stable, .bami-stable * { transition: none !important; animation: none !important; }
 .bami-stable .bami-no-anchoring { overflow-anchor: none; }
 .bami-stable .bami-scroll { scrollbar-gutter: stable; }
 `
@@ -150,7 +145,7 @@ export default function BamiChatWidget({
         />
     )
 
-    // Alto footer dinámico → input pegado abajo (con umbral y rAF para evitar ping-pong)
+    // Alto footer dinámico (umbral + rAF para evitar ping-pong 1px)
     useLayoutEffect(() => {
         const el = footerRef.current
         if (!el) return
@@ -160,7 +155,7 @@ export default function BamiChatWidget({
             const cr = entries[0]?.contentRect
             if (!cr) return
             const h = Math.round(cr.height)
-            if (Math.abs(h - lastH) < 2) return // evita parpadeo por 1px
+            if (Math.abs(h - lastH) < 2) return
             lastH = h
             if (frame) cancelAnimationFrame(frame)
             frame = requestAnimationFrame(() => {
@@ -177,13 +172,13 @@ export default function BamiChatWidget({
     const push=(role,text)=>setMessages(m=>[...m,{id:Date.now()+Math.random(),role,text}])
     const pushRich=(payload)=>setMessages(m=>[...m,{id:Date.now()+Math.random(),role:'bami',type:'rich',payload}])
 
-    // Scroll estable sin "smooth" para evitar reflujo continuo cuando llegan mensajes rápidos
+    // Scroll sin smooth (evita micro-reflujos en serie)
     const scrollBottom=()=>{ requestAnimationFrame(()=>{ listRef.current?.scrollTo({ top:listRef.current.scrollHeight, behavior:'auto' }) }) }
     useEffect(scrollBottom,[messages,typing])
 
     useEffect(()=>{ const onU=(e)=>setC(e.detail); window.addEventListener('bami:caseUpdate',onU); return ()=>window.removeEventListener('bami:caseUpdate',onU) },[])
 
-    // 🔧 Suscripciones de eventos – añadí un canal neutral 'upload:open' por robustez
+    // Suscripciones (compatibles con embed)
     useEffect(()=>{
         const openChat = ()=>setOpen(true)
         const openUpload = ()=>{ setOpen(true); setShowUpload(true); push('bami','Abrí el asistente de subida de documentos.') }
@@ -191,7 +186,7 @@ export default function BamiChatWidget({
         const callAdvisor = ()=>{ setOpen(true); connectAdvisor() }
         const pushMsg = (e)=>{ setOpen(true); push(e.detail?.role||'bami', e.detail?.text||'') }
 
-        const prefixes = embed ? ['sim'] : ['ui','bami']  // compatibilidad
+        const prefixes = embed ? ['sim'] : ['ui','bami']
         const allEvents = [
             ['open', openChat],
             ['upload', openUpload],
@@ -201,7 +196,6 @@ export default function BamiChatWidget({
         ]
 
         prefixes.forEach(p => allEvents.forEach(([n,fn]) => window.addEventListener(`${p}:${n}`, fn)))
-        // canal neutro por si algo externo dispara sin prefijo
         window.addEventListener('upload:open', openUpload)
 
         return ()=> {
@@ -210,7 +204,7 @@ export default function BamiChatWidget({
         }
     },[embed])
 
-    // SSE activo cuando hay case y el chat está abierto
+    // SSE cuando hay case y el chat está abierto
     useEffect(()=>{
         if(!open || !getCase()?.id){ if(sseRef.current){ sseRef.current.close(); sseRef.current=null } ; return }
         const caseId=getCase().id
@@ -369,9 +363,8 @@ export default function BamiChatWidget({
                     { label: 'Ver tracker', value: 'tracker' },
                 ]
             })
-            // abrir subida y tracker en el contexto actual
             window.dispatchEvent(new Event(`${eventPrefix}:upload`))
-            window.dispatchEvent(new Event('upload:open')) // canal neutro
+            window.dispatchEvent(new Event('upload:open'))
             window.dispatchEvent(new Event(`${eventPrefix}:tracker:open`))
         },150)
     }
@@ -594,11 +587,10 @@ export default function BamiChatWidget({
                 : (variant==='fullscreen' ? { height: baseH_full, minHeight: 420 }
                     : (variant==='panel' ? { height: 520 } : { height: 520 })))
 
-    // ⚠️ 'relative' para que el modal 'phone' se pinte ENCIMA del chat (no detrás)
-    //    + contención para aislar layout y evitar reacomodos por fuera.
+    // ⚠️ 'relative' + contención para estabilidad (anti-flicker).
     const ChatWindow=(
         <div
-            className="bami-stable relative min-h-0 flex flex-col"
+            className="bami-stable relative min-h-0 flex flex-col h-full w-full"
             style={{ ...containerStyle, contain: 'layout paint size', transform: 'translateZ(0)' }}
         >
             {StableStyles}
@@ -615,8 +607,9 @@ export default function BamiChatWidget({
         </>)
     }
     if(variant==='fullscreen' || variant==='app'){
+        // 🔧 IMPORTANTE: h-full aquí asegura que el 100% del ChatWindow tenga referencia válida dentro del simulador.
         return (<>
-            <div className="rounded-none sm:rounded-none overflow-hidden">{ChatWindow}</div>
+            <div className="rounded-none sm:rounded-none overflow-hidden h-full">{ChatWindow}</div>
             <UploadAssistant open={showUpload} onClose={()=>setShowUpload(false)} onUploaded={afterUpload} context={embed?'phone':'overlay'}/>
         </>)
     }
