@@ -1,5 +1,5 @@
 // src/components/BamiChatWidget.jsx
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useLayoutEffect } from 'react'
 import UploadAssistant from './UploadAssistant.jsx'
 import TypingDots from './TypingDots.jsx'
 import MessageBubble from './MessageBubble.jsx'
@@ -132,16 +132,43 @@ export default function BamiChatWidget({
     const greetedOnce = useRef(false)
     const [bodyPad, setBodyPad] = useState(88)
 
-    // Alto footer dinámico → input pegado abajo
-    useEffect(() => {
+    // === Estabilizador de layout: estilos globales locales (solo en este widget) ===
+    const StableStyles = (
+        <style
+            // Desactiva transiciones/animaciones dentro del contenedor estable,
+            // desactiva el overflow anchoring y fija el gutter del scrollbar.
+            dangerouslySetInnerHTML={{
+                __html: `
+.bami-stable, .bami-stable * {
+  transition: none !important;
+  animation: none !important;
+}
+.bami-stable .bami-no-anchoring { overflow-anchor: none; }
+.bami-stable .bami-scroll { scrollbar-gutter: stable; }
+`
+            }}
+        />
+    )
+
+    // Alto footer dinámico → input pegado abajo (con umbral y rAF para evitar ping-pong)
+    useLayoutEffect(() => {
         const el = footerRef.current
         if (!el) return
-        const ro = new ResizeObserver(() => {
-            const h = el.getBoundingClientRect().height
-            setBodyPad(Math.max(72, Math.round(h + 8)))
+        let frame = null
+        let lastH = -1
+        const ro = new ResizeObserver((entries) => {
+            const cr = entries[0]?.contentRect
+            if (!cr) return
+            const h = Math.round(cr.height)
+            if (Math.abs(h - lastH) < 2) return // evita parpadeo por 1px
+            lastH = h
+            if (frame) cancelAnimationFrame(frame)
+            frame = requestAnimationFrame(() => {
+                setBodyPad(Math.max(72, h + 8))
+            })
         })
         ro.observe(el)
-        return () => ro.disconnect()
+        return () => { if (frame) cancelAnimationFrame(frame); ro.disconnect() }
     }, [])
 
     const eventPrefix = embed ? 'sim' : 'ui'
@@ -150,7 +177,8 @@ export default function BamiChatWidget({
     const push=(role,text)=>setMessages(m=>[...m,{id:Date.now()+Math.random(),role,text}])
     const pushRich=(payload)=>setMessages(m=>[...m,{id:Date.now()+Math.random(),role:'bami',type:'rich',payload}])
 
-    const scrollBottom=()=>{ requestAnimationFrame(()=>{ listRef.current?.scrollTo({ top:listRef.current.scrollHeight, behavior:'smooth' }) }) }
+    // Scroll estable sin "smooth" para evitar reflujo continuo cuando llegan mensajes rápidos
+    const scrollBottom=()=>{ requestAnimationFrame(()=>{ listRef.current?.scrollTo({ top:listRef.current.scrollHeight, behavior:'auto' }) }) }
     useEffect(scrollBottom,[messages,typing])
 
     useEffect(()=>{ const onU=(e)=>setC(e.detail); window.addEventListener('bami:caseUpdate',onU); return ()=>window.removeEventListener('bami:caseUpdate',onU) },[])
@@ -478,7 +506,7 @@ export default function BamiChatWidget({
     const ChatBody=(
         <div
             ref={listRef}
-            className="flex-1 min-h-0 overflow-auto p-2.5 sm:p-3 space-y-2.5 sm:space-y-3 bg-white overscroll-contain"
+            className="bami-scroll bami-no-anchoring flex-1 min-h-0 overflow-auto p-2.5 sm:p-3 space-y-2.5 sm:space-y-3 bg-white overscroll-contain"
             aria-live="polite"
             aria-label="Mensajes del chat"
             style={{ paddingBottom: bodyPad }}
@@ -547,6 +575,7 @@ export default function BamiChatWidget({
             ref={footerRef}
             className="border-t bg-gray-50 sticky bottom-0 z-[3]"
             style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 0px)' }}
+            data-sticky-footer
         >
             {QuickActions}
             <form onSubmit={handleSend} className="border-t">{ChatInputRow}</form>
@@ -566,7 +595,18 @@ export default function BamiChatWidget({
                     : (variant==='panel' ? { height: 520 } : { height: 520 })))
 
     // ⚠️ 'relative' para que el modal 'phone' se pinte ENCIMA del chat (no detrás)
-    const ChatWindow=(<div className="relative min-h-0 flex flex-col" style={containerStyle}>{ChatHeader}{ChatBody}{ChatFooter}</div>)
+    //    + contención para aislar layout y evitar reacomodos por fuera.
+    const ChatWindow=(
+        <div
+            className="bami-stable relative min-h-0 flex flex-col"
+            style={{ ...containerStyle, contain: 'layout paint size', transform: 'translateZ(0)' }}
+        >
+            {StableStyles}
+            {ChatHeader}
+            {ChatBody}
+            {ChatFooter}
+        </div>
+    )
 
     if(variant==='panel'){
         return (<>
