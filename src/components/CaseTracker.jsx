@@ -1,12 +1,13 @@
 // src/components/CaseTracker.jsx
 // Fuerza avance en modo agente, anima suave la línea de tiempo, y coopera con el orquestador.
+// Ahora respeta __BAMI_SUPPRESS_SIM_TRACKER__ para NO abrir el tracker dentro del simulador durante Autopilot.
 
 import React, { useEffect, useRef, useState } from 'react'
 import { getCase, refreshTracker } from '../lib/caseStore.js'
 import StageTimeline from './StageTimeline.jsx'
 import ProgressRing from './ProgressRing.jsx'
 
-// Instala orquestador (cursor + autopilot + openTracker + lock)
+// Instala orquestador (cursor + autopilot + openTracker)
 import '../lib/uiOrchestrator.js'
 
 function useGlobalTrackerPolling(active = true) {
@@ -100,7 +101,6 @@ export default function CaseTracker({ active = true }) {
         const next = () => {
             if (i >= steps.length) {
                 setSim((s) => ({ ...s, on: false }))
-                // Señal para que el OPS ingeste el lead final cuando el flujo concluye
                 try { window.dispatchEvent(new Event('bami:tracker:finished')) } catch {}
                 return
             }
@@ -115,10 +115,16 @@ export default function CaseTracker({ active = true }) {
     // Arranque de demo cuando el orquestador la pida
     useEffect(() => {
         const start = () => {
-            // abre el tracker robustamente tanto en desktop como en simulador
+            // abre el tracker robustamente en UI de escritorio
             try {
                 window.dispatchEvent(new Event('ui:tracker:open'))
-                window.dispatchEvent(new Event('sim:tracker:open'))
+                // Si Autopilot está activo o hay supresión, NO abrir tracker dentro del simulador
+                const suppressSim = !!window.__BAMI_SUPPRESS_SIM_TRACKER__ || !!window.__BAMI_AGENT_ACTIVE__
+                if (!suppressSim) {
+                    window.dispatchEvent(new Event('sim:tracker:open'))
+                } else {
+                    window.dispatchEvent(new Event('sim:tracker:close'))
+                }
             } catch {}
 
             const current = (getCase() || {}).stage || 'requiere'
@@ -152,10 +158,9 @@ export default function CaseTracker({ active = true }) {
         }
     }, [])
 
-    // ▶️ Soporte directo a simulación del agente (Recibido → En revisión → Aprobado)
+    // ▶️ Soporte directo a simulación del agente
     useEffect(() => {
         const onSim = () => {
-            // Asegura que el tracker avance desde recibido si veníamos en 10%
             const cur = getCase() || {}
             const startStage = (cur.stage === 'requiere' && (cur.percent || 0) <= 10) ? 'recibido' : cur.stage
             runDemoFrom(startStage || 'recibido')
@@ -164,7 +169,7 @@ export default function CaseTracker({ active = true }) {
         return () => window.removeEventListener('tracker:simulate:start', onSim)
     }, [])
 
-    // Watchdog: si el agente está activo y el tracker se queda en 10% > 3.5s, relanza demo
+    // Watchdog
     useEffect(() => {
         clearInterval(watchdogRef.current)
         watchdogRef.current = window.setInterval(() => {
@@ -214,7 +219,6 @@ export default function CaseTracker({ active = true }) {
                     </div>
                 </div>
                 <div className="shrink-0">
-                    {/* ProgressRing ahora anima stroke-dasharray de forma suave */}
                     <ProgressRing value={percent} label={`${percent}%`} />
                 </div>
             </div>

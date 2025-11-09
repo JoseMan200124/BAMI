@@ -1,16 +1,13 @@
 // src/components/BamiAgent.jsx
+// Ajuste clave: durante Autopilot se SUPRIME el tracker dentro del simulador para que se vea el “subir documentos”.
+// Se controla con window.__BAMI_SUPPRESS_SIM_TRACKER__ y se evita emitir 'sim:tracker:open' mientras corre el Autopilot.
+
 import React, { useEffect, useMemo, useRef, useState, useLayoutEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createPortal } from 'react-dom'
-import { Bot, Sparkles, MousePointer2, Activity, Play, Pause, X as XIcon } from 'lucide-react'
+import { Bot, Sparkles, MousePointer2, Activity, Play, X as XIcon } from 'lucide-react'
 import { api } from '../lib/apiClient'
 import { getCase } from '../lib/caseStore.js'
-
-/**
- * BAMI Agent — Autopilot con cursor visible, simulación de tracker y portal robusto.
- * - Forzamos apertura del tracker (desktop + simulador) y animación suave entre etapas.
- * - Al finalizar, se inyecta el “lead creado por BAMI” al panel OPS con animaciones.
- */
 
 const EASE = [0.22, 1, 0.36, 1]
 const DUR = {
@@ -130,7 +127,7 @@ export default function BamiAgent({ caseData, product, controls }) {
 
     // cursor y efectos
     const [cursor, setCursor] = useState({
-        show: true, // visible desde el inicio
+        show: true,
         x: typeof window !== 'undefined' ? (window.scrollX + 32) : 32,
         y: typeof window !== 'undefined' ? (window.scrollY + 32) : 32,
         clicking: false,
@@ -139,7 +136,7 @@ export default function BamiAgent({ caseData, product, controls }) {
     const [halo, setHalo] = useState(null)
     const [tip, setTip] = useState(null)
 
-    // portal a <body> con estilo/z-index reforzado
+    // portal a <body>
     const [portalRoot, setPortalRoot] = useState(null)
     useLayoutEffect(() => {
         let el = document.getElementById('bami-agent-portal')
@@ -163,7 +160,6 @@ export default function BamiAgent({ caseData, product, controls }) {
             document.head.appendChild(st)
         }
         setPortalRoot(el)
-
         const mo = new MutationObserver(() => {
             if (!document.body.contains(el)) document.body.appendChild(el)
             document.body.appendChild(el)
@@ -223,14 +219,12 @@ export default function BamiAgent({ caseData, product, controls }) {
         return p.join(' | ')
     }, [caseData, product, metrics])
 
-    // feed helpers
     const logLine = (text) => setFeed(prev => [...prev, { id: `${Date.now()}-${Math.random()}`, t: new Date(), text }])
     useEffect(() => {
         if (!feedRef.current) return
         feedRef.current.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' })
     }, [feed])
 
-    // efectos visuales
     const showHalo = async (el, ms=DUR.halo) => {
         if (!el) return
         const r = el.getBoundingClientRect()
@@ -282,7 +276,6 @@ export default function BamiAgent({ caseData, product, controls }) {
         await wait(DUR.settlePause)
     }
 
-    // helpers de limpieza
     const closeEverything = () => {
         window.dispatchEvent(new Event('ui:upload:close'))
         window.dispatchEvent(new Event('upload:close'))
@@ -293,7 +286,6 @@ export default function BamiAgent({ caseData, product, controls }) {
         window.dispatchEvent(new Event('sim:close'))
     }
 
-    // Simulación del tracker
     const simulateTracker = (opts={}) => {
         const detail = {
             caseId: (getCase?.()?.id || caseData?.id || 'demo-' + Date.now()),
@@ -304,6 +296,7 @@ export default function BamiAgent({ caseData, product, controls }) {
             ]
         }
         window.dispatchEvent(new CustomEvent('tracker:simulate:start', { detail }))
+        // Esto dispara la animación en el tracker (componente), pero ya NO abre el panel del simulador
         window.dispatchEvent(new Event('bami:sim:runTracker'))
     }
 
@@ -327,9 +320,8 @@ export default function BamiAgent({ caseData, product, controls }) {
             success: () => !!document.querySelector('[data-expediente], .toast-expediente, [data-case-created]'),
             forceSuccessIfRun: true,
             after: async () => {
-                // Aseguramos apertura del tracker desde el principio
+                // Abrimos tracker SOLO en UI principal (NO en simulador durante Autopilot)
                 window.dispatchEvent(new Event('ui:tracker:open'))
-                window.dispatchEvent(new Event('sim:tracker:open'))
                 window.dispatchEvent(new Event('bami:agent:openTracker'))
             }
         },
@@ -347,11 +339,11 @@ export default function BamiAgent({ caseData, product, controls }) {
                 window.dispatchEvent(new Event('ui:upload:demo'))
                 window.dispatchEvent(new Event('sim:upload:demo'))
 
-                // Abrimos tracker y lanzamos simulación (desktop + simulador)
+                // Mantener tracker abierto SOLO en escritorio, y avanzar simulación
                 setTimeout(() => {
                     window.dispatchEvent(new Event('ui:tracker:open'))
-                    window.dispatchEvent(new Event('sim:tracker:open'))
                     window.dispatchEvent(new Event('bami:agent:openTracker'))
+                    // NO abrimos el tracker del simulador (se suprime durante Autopilot)
                     simulateTracker()
                 }, 900)
             }
@@ -365,7 +357,7 @@ export default function BamiAgent({ caseData, product, controls }) {
                 controls?.openTracker?.()
                 window.dispatchEvent(new Event('bami:agent:openTracker'))
                 window.dispatchEvent(new Event('bami:sim:runTracker'))
-                // Mantener lock para que no se cierre durante el show
+                // NO emitir 'sim:tracker:open' durante Autopilot
                 window.__BAMI_LOCK_TRACKER__ = true
             },
             success: () => !!document.querySelector('[data-agent-area="tracker"],[data-tracker-panel],.tracker-panel'),
@@ -375,10 +367,8 @@ export default function BamiAgent({ caseData, product, controls }) {
             type: 'focus',
             id: 'focus-bam-ops',
             say: 'Vista para BAM: panel de análisis y leads.',
-            // No cerramos aquí; dejamos que el tracker termine visible y cerramos al final.
             targets: { selectors: ['[data-agent-area="panel-bam-ops"]','.ops-panel','.analytics-panel'], texts: ['panel de análisis y leads','panel de analisis y leads'] },
             after: async () => {
-                // Abre OPS dentro del simulador si aplica y muestra ayudas
                 window.dispatchEvent(new Event('sim:ops:open'))
                 window.dispatchEvent(new Event('bami:ops:explain'))
             }
@@ -435,12 +425,13 @@ export default function BamiAgent({ caseData, product, controls }) {
         // 🔒 Señales globales para UX
         window.__BAMI_AGENT_ACTIVE__ = true
         window.__BAMI_DISABLE_FLOATING__ = true // desactiva chat flotante
-        window.__BAMI_LOCK_TRACKER__ = true     // evita que se cierre el tracker dentro del simulador
+        window.__BAMI_LOCK_TRACKER__ = true     // evita cierre del tracker principal
+        // 🚫 Suprimir tracker del simulador para que se vea el "subir documentos"
+        window.__BAMI_SUPPRESS_SIM_TRACKER__ = true
+        window.dispatchEvent(new Event('sim:tracker:close'))
 
         // Cursor presente desde el inicio
         try { window.dispatchEvent(new Event('bami:cursor:forceShow')) } catch {}
-
-        // Notificar a trackers para que, si están montados, arranquen
         window.dispatchEvent(new Event('bami:agent:start'))
 
         try {
@@ -449,7 +440,7 @@ export default function BamiAgent({ caseData, product, controls }) {
                 await wait(260)
             }
 
-            // Espera a que el tracker termine (si envía señal); damos un margen
+            // Espera a que el tracker termine (si envía señal); margen de seguridad
             await new Promise(resolve => {
                 let done = false
                 const h = () => { done = true; window.removeEventListener('bami:tracker:finished', h); resolve() }
@@ -477,12 +468,11 @@ export default function BamiAgent({ caseData, product, controls }) {
             setHalo(null); setTip(null)
             setCursor(c => ({ ...c, show: true, clicking: false, transition: { type: 'tween', ease: EASE, duration: 0.8 } }))
 
-            // ⛔ Limpiar bloqueos pero cerrar overlays secundarios
+            // ⛔ Limpiar bloqueos y restablecer supresión del simulador
             window.__BAMI_LOCK_TRACKER__ = false
+            window.__BAMI_SUPPRESS_SIM_TRACKER__ = false
             closeEverything()
             setRunning(false)
-
-            // mantenemos el flag de agente un poco y luego liberamos
             setTimeout(()=>{ window.__BAMI_AGENT_ACTIVE__ = false }, 200)
         }
     }
@@ -580,17 +570,6 @@ export default function BamiAgent({ caseData, product, controls }) {
                 >
                     <div className="relative">
                         <div className="w-5 h-5 rounded-full bg-black/90 shadow-[0_0_0_2px_rgba(255,255,255,.7)]" />
-                        <AnimatePresence>
-                            {cursor.clicking && (
-                                <motion.span
-                                    initial={{ opacity: 0.45, scale: 0.6 }}
-                                    animate={{ opacity: 0, scale: 2.3 }}
-                                    exit={{ opacity: 0 }}
-                                    transition={{ duration: 0.6, ease: 'ease-out' }}
-                                    className="absolute -inset-2 rounded-full border-2 border-black/40"
-                                />
-                            )}
-                        </AnimatePresence>
                     </div>
                 </motion.div>
             </div>
@@ -629,7 +608,6 @@ export default function BamiAgent({ caseData, product, controls }) {
         </div>
     )
 
-    // Montaje del portal HUD y cursor
     if (!portalRoot) return null
     return createPortal(hud, portalRoot)
 }
