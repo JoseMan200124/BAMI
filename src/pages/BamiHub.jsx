@@ -1,8 +1,4 @@
 // src/pages/BamiHub.jsx
-// Vista principal. Ahora escucha 'bami:ui:openOps' para cambiar la vista a "ops"
-// y asegura que el panel quede a la vista. Mantiene un CaseTracker oculto para
-// escuchar simulaciones cuando el tracker no está abierto.
-
 import React, { useEffect, useMemo, useState } from 'react'
 import CaseTracker from '../components/CaseTracker.jsx'
 import BamiChatWidget from '../components/BamiChatWidget.jsx'
@@ -43,8 +39,7 @@ export default function BamiHub() {
             setShowTracker(false)
             setViewMode('ops')
             setTimeout(() => {
-                document.querySelector('[data-agent-area="panel-bam-ops"]')
-                    ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+                document.querySelector('[data-agent-area="panel-bam-ops"]')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
             }, 50)
         }
 
@@ -87,13 +82,15 @@ export default function BamiHub() {
     const start = async () => {
         const cc = await createNewCase(product)
         notify('Expediente creado')
-        setC(cc); setShowTracker(false)
+        setC(cc)
+        setShowTracker(false)
     }
     const reopen = async () => {
         const prevApplicant = getCase()?.applicant || null
         const cc = await createNewCase(product, prevApplicant)
         notify('Proceso reabierto')
-        setC(cc); setShowTracker(false)
+        setC(cc)
+        setShowTracker(false)
     }
     const openUploadEverywhere = () => {
         const prefix = showMobile ? 'sim' : 'ui'
@@ -112,7 +109,8 @@ export default function BamiHub() {
 
     const nextCTA = useMemo(() => {
         if (!c) return { id: 'create', label: 'Crear expediente', action: () => start() }
-        if ((c.missing || []).length > 0) return { id: 'upload', label: `Subir ${c.missing.length} documento(s)`, action: () => openUploadEverywhere() }
+        if ((c.missing || []).length > 0)
+            return { id: 'upload', label: `Subir ${c.missing.length} documento(s)`, action: () => openUploadEverywhere() }
         if (c.stage !== 'aprobado') return { id: 'validate', label: 'Validar con IA', action: () => validateEverywhere() }
         return { id: 'advisor', label: 'Hablar con asesor', action: () => advisorEverywhere() }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -151,14 +149,12 @@ export default function BamiHub() {
                 <div className="px-3 sm:px-4 py-2 border-b bg-gray-50 flex items-center justify-between">
                     <div className="font-semibold">Área BAM · Ops</div>
                     <div className="flex items-center gap-2">
-                        <button
-                            data-agent-id="btn-tracker"
-                            className="btn btn-sm whitespace-nowrap"
-                            onClick={() => setShowTracker(true)}
-                        >
+                        <button data-agent-id="btn-tracker" className="btn btn-sm whitespace-nowrap" onClick={() => setShowTracker(true)}>
                             Abrir tracker
                         </button>
-                        <button className="btn btn-sm whitespace-nowrap" onClick={() => setShowForm(true)}>Nuevo caso</button>
+                        <button className="btn btn-sm whitespace-nowrap" onClick={() => setShowForm(true)}>
+                            Nuevo caso
+                        </button>
                     </div>
                 </div>
                 <div className="p-3 sm:p-4 overflow-auto" style={{ height: 'calc(100svh - 240px)' }}>
@@ -175,19 +171,19 @@ export default function BamiHub() {
                 <div className="max-w-7xl mx-auto px-3 sm:px-4 h-16 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                         <img src="/BAMI.svg" alt="BAMI" className="w-6 h-6 rounded-full ring-1 ring-yellow-300 shrink-0" />
-                        <div className="text-base sm:text-lg font-extrabold tracking-tight truncate">
-                            BAMI · Cliente & BAM · Ops
-                        </div>
+                        <div className="text-base sm:text-lg font-extrabold tracking-tight truncate">BAMI · Cliente & BAM · Ops</div>
                     </div>
 
-                    <div className="hidden sm:flex items-center gap-2 flex-nowrap overflow-x-auto whitespace-nowrap pl-2" style={{ scrollbarWidth: 'none' }}>
-                        <select
-                            className="border rounded-xl px-3 py-1.5 text-sm"
-                            value={product}
-                            onChange={(e) => setProduct(e.target.value)}
-                            aria-label="Producto"
-                        >
-                            {Object.keys(PRODUCT_RULES).map((p) => <option key={p} value={p}>{p}</option>)}
+                    <div
+                        className="hidden sm:flex items-center gap-2 flex-nowrap overflow-x-auto whitespace-nowrap pl-2"
+                        style={{ scrollbarWidth: 'none' }}
+                    >
+                        <select className="border rounded-xl px-3 py-1.5 text-sm" value={product} onChange={(e) => setProduct(e.target.value)} aria-label="Producto">
+                            {Object.keys(PRODUCT_RULES).map((p) => (
+                                <option key={p} value={p}>
+                                    {p}
+                                </option>
+                            ))}
                         </select>
 
                         <div className="flex items-center gap-1 border rounded-xl p-1">
@@ -218,27 +214,15 @@ export default function BamiHub() {
                                 Simular App
                             </button>
 
-                            <button
-                                data-agent-id="btn-crear-expediente"
-                                className="btn btn-dark h-9 whitespace-nowrap"
-                                onClick={start}
-                            >
+                            <button data-agent-id="btn-crear-expediente" className="btn btn-dark h-9 whitespace-nowrap" onClick={start}>
                                 Crear expediente
                             </button>
 
-                            <button
-                                data-agent-id="btn-tracker-top"
-                                className="btn h-9 px-3 whitespace-nowrap"
-                                onClick={() => setShowTracker(true)}
-                            >
+                            <button data-agent-id="btn-tracker-top" className="btn h-9 px-3 whitespace-nowrap" onClick={() => setShowTracker(true)}>
                                 Tracker
                             </button>
 
-                            <button
-                                data-agent-id="btn-reabrir"
-                                className="btn h-9 px-3 whitespace-nowrap"
-                                onClick={reopen}
-                            >
+                            <button data-agent-id="btn-reabrir" className="btn h-9 px-3 whitespace-nowrap" onClick={reopen}>
                                 Reabrir
                             </button>
                         </div>
@@ -253,18 +237,10 @@ export default function BamiHub() {
                         </div>
 
                         <div className="flex items-center gap-2 flex-nowrap">
-                            <button
-                                data-agent-id="btn-recomendado"
-                                className="btn btn-dark btn-sm shrink-0 whitespace-nowrap"
-                                onClick={nextCTA.action}
-                            >
+                            <button data-agent-id="btn-recomendado" className="btn btn-dark btn-sm shrink-0 whitespace-nowrap" onClick={nextCTA.action}>
                                 {nextCTA.label}
                             </button>
-                            <button
-                                data-agent-id="btn-continuar"
-                                className="btn btn-sm shrink-0 whitespace-nowrap"
-                                onClick={nextCTA.action}
-                            >
+                            <button data-agent-id="btn-continuar" className="btn btn-sm shrink-0 whitespace-nowrap" onClick={nextCTA.action}>
                                 Continuar
                             </button>
                         </div>
@@ -275,7 +251,7 @@ export default function BamiHub() {
             {/* CONTENIDO */}
             <section className="flex-1">
                 <div className="max-w-7xl mx-auto px-3 sm:px-4 py-3 sm:py-6">
-                    {viewMode === 'both' && (<>{DesktopTwoColumns}</>)}
+                    {viewMode === 'both' && <>{DesktopTwoColumns}</>}
 
                     {viewMode === 'client' && (
                         <section className="rounded-2xl border shadow-sm overflow-hidden bg-white">
@@ -309,8 +285,12 @@ export default function BamiHub() {
                             <div className="px-3 sm:px-4 py-2 border-b bg-gray-50 flex items-center justify-between">
                                 <div className="font-semibold">Área BAM · Ops</div>
                                 <div className="flex items-center gap-2">
-                                    <button className="btn btn-sm whitespace-nowrap" onClick={() => setShowTracker(true)}>Abrir tracker</button>
-                                    <button className="btn btn-sm whitespace-nowrap" onClick={() => setShowForm(true)}>Nuevo caso</button>
+                                    <button className="btn btn-sm whitespace-nowrap" onClick={() => setShowTracker(true)}>
+                                        Abrir tracker
+                                    </button>
+                                    <button className="btn btn-sm whitespace-nowrap" onClick={() => setShowForm(true)}>
+                                        Nuevo caso
+                                    </button>
                                 </div>
                             </div>
                             <div className="p-3 sm:p-4">
@@ -322,9 +302,7 @@ export default function BamiHub() {
             </section>
 
             {/* Simulador móvil */}
-            {showMobile && (
-                <BamMobileSimulator open={showMobile} onClose={() => setShowMobile(false)} />
-            )}
+            {showMobile && <BamMobileSimulator open={showMobile} onClose={() => setShowMobile(false)} />}
 
             {/* MODAL TRACKER */}
             {showTracker && !showMobile && (
@@ -359,7 +337,9 @@ export default function BamiHub() {
                                 <img src="/BAMI.svg" alt="BAMI" className="w-6 h-6 rounded-full" />
                                 <span>Completa tus datos</span>
                             </h3>
-                            <button className="btn" onClick={() => setShowForm(false)}>Cerrar</button>
+                            <button className="btn" onClick={() => setShowForm(false)}>
+                                Cerrar
+                            </button>
                         </div>
                         <RequestForm product={product} onCreated={() => setShowForm(false)} />
                     </div>
