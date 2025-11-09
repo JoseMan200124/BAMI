@@ -1,5 +1,5 @@
 // src/components/BamiChatWidget.jsx
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useLayoutEffect } from 'react'
 import UploadAssistant from './UploadAssistant.jsx'
 import TypingDots from './TypingDots.jsx'
 import MessageBubble from './MessageBubble.jsx'
@@ -86,8 +86,8 @@ function Chips({ items, onAction, asButtons=false }){
                     </button>
                 ) : (
                     <span key={idx} className="px-2 py-1 text-xs rounded-full border bg-white whitespace-nowrap">
-            {label}
-          </span>
+                        {label}
+                    </span>
                 )
             ))}
         </div>
@@ -128,21 +128,42 @@ export default function BamiChatWidget({
     const inputRef = useRef(null)
     const listRef = useRef(null)
     const footerRef = useRef(null)
+    const rootRef = useRef(null)
     const sseRef = useRef(null)
     const greetedOnce = useRef(false)
-    const [bodyPad, setBodyPad] = useState(88)
 
-    // Alto footer dinámico → input pegado abajo
-    useEffect(() => {
-        const el = footerRef.current
-        if (!el) return
-        const ro = new ResizeObserver(() => {
-            const h = el.getBoundingClientRect().height
-            setBodyPad(Math.max(72, Math.round(h + 8)))
-        })
-        ro.observe(el)
+    // ===== Estabilización del layout del chat (elimina “sube y baja”) =====
+    // - El contenedor principal usa grid: [1fr mensajes | auto composer]
+    // - La lista reserva el alto del composer con --composer-h para cero reflujo.
+    useLayoutEffect(() => {
+        const root = rootRef.current
+        const footer = footerRef.current
+        if (!root || !footer) return
+
+        const setVar = () => {
+            const h = Math.round(footer.getBoundingClientRect().height)
+            root.style.setProperty('--composer-h', `${h}px`)
+        }
+        setVar()
+        const ro = new ResizeObserver(() => requestAnimationFrame(setVar))
+        ro.observe(footer)
         return () => ro.disconnect()
     }, [])
+
+    // Auto-scroll controlado (solo si el usuario está cerca del final)
+    const isNearBottom = () => {
+        const el = listRef.current
+        if (!el) return true
+        const threshold = 80
+        return el.scrollHeight - (el.scrollTop + el.clientHeight) < threshold
+    }
+    const scrollBottom = (smooth=false) => {
+        const el = listRef.current
+        if (!el) return
+        el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
+    }
+    useEffect(() => { scrollBottom(false) }, [])
+    useEffect(() => { if (isNearBottom()) scrollBottom(true) }, [messages, typing])
 
     const eventPrefix = embed ? 'sim' : 'ui'
     const ev = (name) => new Event(`${eventPrefix}:${name}`)
@@ -150,12 +171,9 @@ export default function BamiChatWidget({
     const push=(role,text)=>setMessages(m=>[...m,{id:Date.now()+Math.random(),role,text}])
     const pushRich=(payload)=>setMessages(m=>[...m,{id:Date.now()+Math.random(),role:'bami',type:'rich',payload}])
 
-    const scrollBottom=()=>{ requestAnimationFrame(()=>{ listRef.current?.scrollTo({ top:listRef.current.scrollHeight, behavior:'smooth' }) }) }
-    useEffect(scrollBottom,[messages,typing])
-
     useEffect(()=>{ const onU=(e)=>setC(e.detail); window.addEventListener('bami:caseUpdate',onU); return ()=>window.removeEventListener('bami:caseUpdate',onU) },[])
 
-    // 🔧 Suscripciones de eventos – añadí un canal neutral 'upload:open' por robustez
+    // 🔧 Suscripciones de eventos – canal neutro 'upload:open' incluido
     useEffect(()=>{
         const openChat = ()=>setOpen(true)
         const openUpload = ()=>{ setOpen(true); setShowUpload(true); push('bami','Abrí el asistente de subida de documentos.') }
@@ -173,7 +191,6 @@ export default function BamiChatWidget({
         ]
 
         prefixes.forEach(p => allEvents.forEach(([n,fn]) => window.addEventListener(`${p}:${n}`, fn)))
-        // canal neutro por si algo externo dispara sin prefijo
         window.addEventListener('upload:open', openUpload)
 
         return ()=> {
@@ -184,7 +201,10 @@ export default function BamiChatWidget({
 
     // SSE activo cuando hay case y el chat está abierto
     useEffect(()=>{
-        if(!open || !getCase()?.id){ if(sseRef.current){ sseRef.current.close(); sseRef.current=null } ; return }
+        if(!open || !getCase()?.id){
+            if(sseRef.current){ sseRef.current.close(); sseRef.current=null }
+            return
+        }
         const caseId=getCase().id
         const base=(import.meta.env.VITE_API_URL || '/api').replace(/\/$/,'')
         const url=`${base}/stream/${caseId}`
@@ -341,10 +361,9 @@ export default function BamiChatWidget({
                     { label: 'Ver tracker', value: 'tracker' },
                 ]
             })
-            // abrir subida y tracker en el contexto actual
+            // Abrimos únicamente el uploader (el tracker ya no se abre aquí para evitar dobles aperturas)
             window.dispatchEvent(new Event(`${eventPrefix}:upload`))
             window.dispatchEvent(new Event('upload:open')) // canal neutro
-            window.dispatchEvent(new Event(`${eventPrefix}:tracker:open`))
         },150)
     }
 
@@ -369,7 +388,7 @@ export default function BamiChatWidget({
         } else {
             push('bami','No tienes faltantes. ¡Vamos a revisión!')
         }
-        window.dispatchEvent(ev('tracker:open'))
+        // Ya NO abrimos el tracker automáticamente aquí
     }
 
     const openUploadManual=()=>{
@@ -381,7 +400,7 @@ export default function BamiChatWidget({
     const afterUpload=async()=>{
         push('bami','📥 Recibí tus archivos. Estoy analizando con IA…')
         await refreshTracker()
-        window.dispatchEvent(ev('tracker:open'))
+        // Ya NO abrimos el tracker aquí para evitar dobles/toggles
     }
 
     const validateAI=async(silent=false)=>{
@@ -389,8 +408,18 @@ export default function BamiChatWidget({
         setMode('ai'); if(!silent) push('user','Validar con IA'); setTyping(true)
         const steps=['🔍 Revisando legibilidad de archivos…','🛡️ Confirmando identidad y seguridad…','📈 Evaluando reglas del producto…','✨ Calculando score y explicabilidad…']
         for (let i=0;i<steps.length;i++){ push('ai',steps[i]); await new Promise(r=>setTimeout(r,600)) } // eslint-disable-line no-await-in-loop
-        try{ const {message}=await validateWithAI(); setTyping(false); push('ai',`Resultado: ${message}`); await refreshTracker(); window.dispatchEvent(ev('tracker:open')) }
-        catch{ setTyping(false); push('ai','No pude completar la validación ahora mismo. ¿Probamos otra vez o te conecto con un asesor?'); notify('Error al validar','error') }
+        try{
+            const {message}=await validateWithAI()
+            setTyping(false)
+            push('ai',`Resultado: ${message}`)
+            await refreshTracker()
+            // ✅ Solo aquí (último paso del flujo) abrimos el tracker
+            window.dispatchEvent(ev('tracker:open'))
+        } catch{
+            setTyping(false)
+            push('ai','No pude completar la validación ahora mismo. ¿Probamos otra vez o te conecto con un asesor?')
+            notify('Error al validar','error')
+        }
     }
 
     const connectAdvisor=()=>{
@@ -405,7 +434,7 @@ export default function BamiChatWidget({
             setTyping(false)
             setAdvisorConnected(true)
             push('advisor','¡Hola! Soy Sofía, tu asesora. ¿Me confirmas tu DPI para verificar el expediente?')
-            window.dispatchEvent(ev('tracker:open'))
+            // Ya NO abrimos el tracker automáticamente al conectar asesor
         },2400)
     }
     const endAdvisor=()=>{ setAdvisorConnected(false); push('advisor','Gracias por contactarnos. Cierro el chat, pero puedes volver cuando quieras.') }
@@ -478,10 +507,17 @@ export default function BamiChatWidget({
     const ChatBody=(
         <div
             ref={listRef}
-            className="flex-1 min-h-0 overflow-auto p-2.5 sm:p-3 space-y-2.5 sm:space-y-3 bg-white overscroll-contain"
+            className="min-h-0 overflow-auto p-2.5 sm:p-3 space-y-2.5 sm:space-y-3 bg-white overscroll-contain"
             aria-live="polite"
             aria-label="Mensajes del chat"
-            style={{ paddingBottom: bodyPad }}
+            style={{
+                // Reserva el espacio del composer, evitando empujes visuales
+                paddingBottom: 'var(--composer-h, 88px)',
+                // Evita cambios de ancho al aparecer/desaparecer scrollbar
+                scrollbarGutter: 'stable both-edges',
+                // Desactiva anclajes de scroll que provocan saltos
+                overflowAnchor: 'none'
+            }}
         >
             {messages.map(m => (
                 m.type === 'rich'
@@ -545,7 +581,7 @@ export default function BamiChatWidget({
     const ChatFooter=(
         <div
             ref={footerRef}
-            className="border-t bg-gray-50 sticky bottom-0 z-[3]"
+            className="border-t bg-gray-50"
             style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 0px)' }}
         >
             {QuickActions}
@@ -565,18 +601,36 @@ export default function BamiChatWidget({
                 : (variant==='fullscreen' ? { height: baseH_full, minHeight: 420 }
                     : (variant==='panel' ? { height: 520 } : { height: 520 })))
 
-    // ⚠️ 'relative' para que el modal 'phone' se pinte ENCIMA del chat (no detrás)
-    const ChatWindow=(<div className="relative min-h-0 flex flex-col" style={containerStyle}>{ChatHeader}{ChatBody}{ChatFooter}</div>)
+    // Ventana del chat: grid [mensajes 1fr | composer auto] con contención para evitar destellos
+    const ChatWin = () => (
+        <div
+            ref={rootRef}
+            className="relative min-h-0 grid"
+            style={{
+                ...containerStyle,
+                gridTemplateRows: '1fr auto',
+                overflow: 'hidden',
+                // Aislar composición para eliminar micro-parpadeos al cambiar tamaños
+                contain: 'layout paint size',
+                transform: 'translateZ(0)',
+                scrollbarGutter: 'stable both-edges'
+            }}
+        >
+            {ChatHeader}
+            {ChatBody}
+            {ChatFooter}
+        </div>
+    )
 
     if(variant==='panel'){
         return (<>
-            <div className="rounded-2xl border shadow-sm overflow-hidden">{ChatWindow}</div>
+            <div className="rounded-2xl border shadow-sm overflow-hidden"><ChatWin/></div>
             <UploadAssistant open={showUpload} onClose={()=>setShowUpload(false)} onUploaded={afterUpload} context={embed?'phone':'overlay'}/>
         </>)
     }
     if(variant==='fullscreen' || variant==='app'){
         return (<>
-            <div className="rounded-none sm:rounded-none overflow-hidden">{ChatWindow}</div>
+            <div className="rounded-none sm:rounded-none overflow-hidden"><ChatWin/></div>
             <UploadAssistant open={showUpload} onClose={()=>setShowUpload(false)} onUploaded={afterUpload} context={embed?'phone':'overlay'}/>
         </>)
     }
@@ -608,7 +662,7 @@ export default function BamiChatWidget({
                         bottom: 'calc(env(safe-area-inset-bottom, 0px) + 92px)',
                     }}
                 >
-                    {ChatWindow}
+                    <ChatWin/>
                 </div>
             )}
             <UploadAssistant open={showUpload} onClose={()=>setShowUpload(false)} onUploaded={afterUpload} context={embed?'phone':'overlay'}/>
