@@ -12,6 +12,7 @@ export const STAGES = [
 
 export default function StageTimeline({ stage = 'requiere', history = [], timeline = [] }) {
     const idx = STAGES.findIndex((s) => s.key === stage)
+
     // Compatibilidad: soporta {at,stage,note} y también {ts,type,text}
     const items = (timeline && timeline.length
         ? timeline.map(t => ({
@@ -20,13 +21,22 @@ export default function StageTimeline({ stage = 'requiere', history = [], timeli
             note: t.note ?? t.text ?? ''
         }))
         : (history || []))
+
     const widthPct = Math.max(0, idx) / (STAGES.length - 1) * 100
 
     return (
         <div className="w-full">
             <div className="relative">
                 <div className="absolute left-0 right-0 top-6 h-1 bg-gray-200 rounded-full"></div>
-                <div className="absolute left-0 top-6 h-1 bg-bami-yellow rounded-full transition-all" style={{ width: `${widthPct}%` }} />
+
+                {/* Barra de progreso con transición más lenta y suave */}
+                <div
+                    className="absolute left-0 top-6 h-1 bg-bami-yellow rounded-full"
+                    style={{
+                        width: `${widthPct}%`,
+                        transition: 'width 2.1s cubic-bezier(0.22,1,0.36,1)'
+                    }}
+                />
 
                 {/* Mobile: lista horizontal desplazable */}
                 <div className="overflow-x-auto no-scrollbar">
@@ -46,6 +56,11 @@ export default function StageTimeline({ stage = 'requiere', history = [], timeli
                                             isAlt ? 'bg-blue-50 border-blue-300' : '',
                                         ].join(' ')}
                                         title={s.hint}
+                                        // Suaviza cambio de fondo/borde y da un leve "pop" cuando es activo
+                                        style={{
+                                            transition: 'transform 900ms cubic-bezier(0.22,1,0.36,1), background-color 600ms ease, border-color 600ms ease',
+                                            transform: isActive ? 'scale(1.06)' : 'scale(1.00)'
+                                        }}
                                     >
                                         <Icon size={18} />
                                     </div>

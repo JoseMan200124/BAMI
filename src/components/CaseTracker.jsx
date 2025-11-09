@@ -1,5 +1,5 @@
 // src/components/CaseTracker.jsx
-// Fuerza avance en modo agente, llena línea de tiempo, y coopera con el orquestador.
+// Fuerza avance en modo agente, llena línea de tiempo y coopera con el orquestador — ahora más lento y smooth.
 
 import React, { useEffect, useRef, useState } from 'react'
 import { getCase, refreshTracker } from '../lib/caseStore.js'
@@ -75,11 +75,12 @@ export default function CaseTracker({ active = true }) {
         } catch {}
     }
 
+    // ⏱️ Secuencia más lenta para que se note el paso entre etapas
     const stagesSequence = [
-        { stage: 'requiere',    percent: 10,  delay: 500,  missing: ['dpi', 'selfie', 'comprobante_domicilio'], log: 'Expediente iniciado.' },
-        { stage: 'recibido',    percent: 35,  delay: 800,  missing: ['selfie', 'comprobante_domicilio'],       log: 'Recepción confirmada.' },
-        { stage: 'en_revision', percent: 70,  delay: 1100, missing: [],                                        log: 'En revisión operativa.' },
-        { stage: 'aprobado',    percent: 100, delay: 800,  missing: [],                                        log: 'Autorizado.' },
+        { stage: 'requiere',    percent: 10,  delay: 1800, missing: ['dpi', 'selfie', 'comprobante_domicilio'], log: 'Expediente iniciado.' },
+        { stage: 'recibido',    percent: 35,  delay: 2200, missing: ['selfie', 'comprobante_domicilio'],       log: 'Recepción confirmada.' },
+        { stage: 'en_revision', percent: 70,  delay: 2600, missing: [],                                        log: 'En revisión operativa.' },
+        { stage: 'aprobado',    percent: 100, delay: 2000, missing: [],                                        log: 'Autorizado.' },
     ]
 
     const runDemoFrom = (startStage) => {
@@ -140,7 +141,6 @@ export default function CaseTracker({ active = true }) {
     // ▶️ Soporte directo a simulación del agente (Recibido → En revisión → Aprobado)
     useEffect(() => {
         const onSim = () => {
-            // Asegura que el tracker avance desde recibido si veníamos en 10%
             const cur = getCase() || {}
             const startStage = (cur.stage === 'requiere' && (cur.percent || 0) <= 10) ? 'recibido' : cur.stage
             runDemoFrom(startStage || 'recibido')

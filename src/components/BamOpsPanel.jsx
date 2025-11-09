@@ -3,13 +3,17 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/apiClient'
 import ProgressRing from './ProgressRing.jsx'
 import { Clock, CheckCircle2, BarChart3, Star, TrendingUp } from 'lucide-react'
+import { getCase } from '../lib/caseStore.js'
 
 const TOKEN_KEY = 'bami_admin_token'
 
 /* ------------------------------ UI helpers ------------------------------ */
-function Card({ title, value, hint, children, className = '' }) {
+function Card({ title, value, hint, children, className = '', highlight = false }) {
     return (
-        <div className={`p-4 rounded-2xl border bg-white ${className}`}>
+        <div
+            className={`p-4 rounded-2xl border bg-white ${className}`}
+            style={highlight ? { animation: 'bamiFlash 1400ms ease-out' } : undefined}
+        >
             <div className="text-xs text-gray-500">{title}</div>
             <div className="mt-1 text-2xl font-bold leading-tight">{value}</div>
             {hint && <div className="text-xs text-gray-500 mt-1">{hint}</div>}
@@ -45,7 +49,11 @@ function StackedBar({ segments }) {
                         return (
                             <div
                                 key={s.key}
-                                style={{ width: `${pct}%`, backgroundColor: s.color }}
+                                style={{
+                                    width: `${pct}%`,
+                                    backgroundColor: s.color,
+                                    transition: 'width 1.5s cubic-bezier(0.22,1,0.36,1)'
+                                }}
                                 className="h-full"
                                 title={`${s.label}: ${s.value}`}
                             />
@@ -143,6 +151,22 @@ function buildDemoData() {
 export default function BamOpsPanel() {
     // Autologin DEMO: nunca pedimos credenciales
     const [data, setData] = useState(null)
+    const [highlightLeadId, setHighlightLeadId] = useState(null)
+    const [highlightKPIs, setHighlightKPIs] = useState(false)
+
+    useEffect(() => {
+        // estilos locales para highlight suave
+        const style = document.createElement('style')
+        style.textContent = `
+@keyframes bamiFlash { 
+  0% { background: #fff7cc; } 
+  100% { background: transparent; } 
+}
+.bami-new-lead { animation: bamiFlash 1800ms ease-out; }
+`
+        document.head.appendChild(style)
+        return () => { try { document.head.removeChild(style) } catch {} }
+    }, [])
 
     const fetchDataOnce = async () => {
         try {
@@ -150,7 +174,6 @@ export default function BamOpsPanel() {
                 localStorage.setItem(TOKEN_KEY, 'demo')
             }
             const d = await api.adminAnalytics()
-            // Si el backend responde bien, úsalo; si no, demo.
             setData(d && typeof d === 'object' ? d : buildDemoData())
         } catch {
             setData(buildDemoData())
@@ -160,6 +183,55 @@ export default function BamOpsPanel() {
     useEffect(() => {
         // Solo una vez para evitar “flicker” y cumplir “mostrar una vez”
         fetchDataOnce()
+    }, [])
+
+    // ▶️ Integración: cuando termina el Autopilot, ingerimos el lead del caso actual
+    useEffect(() => {
+        const onDone = () => {
+            const cc = getCase() || {}
+            if (!cc?.id) return
+            setData(prev => {
+                const base = prev || buildDemoData()
+                // Evita duplicados
+                if ((base.leads || []).some(l => l.id === cc.id)) return base
+
+                const lead = {
+                    id: cc.id,
+                    product: cc.product || 'Tarjeta de Crédito',
+                    channel: (cc.channel || 'web'),
+                    applicant: { name: cc.applicant?.name || 'Cliente BAMI' },
+                    stage: 'aprobado',         // cerramos el show en aprobado para demo
+                    missing_count: 0,
+                    created_at: Date.now()
+                }
+
+                const leads = [lead, ...(base.leads || [])]
+                const totals = {
+                    ...base.totals,
+                    cases: (base.totals?.cases || 0) + 1,
+                    aprobados: (base.totals?.aprobados || 0) + 1,
+                    approval_rate: (( (base.totals?.aprobados || 0) + 1) / ((base.totals?.cases || 0) + 1)),
+                }
+                const funnel = {
+                    ...base.funnel,
+                    aprobado: (base.funnel?.aprobado || 0) + 1
+                }
+                const by_product = {
+                    ...base.by_product,
+                    [lead.product]: (base.by_product?.[lead.product] || 0) + 1
+                }
+
+                // Marca visual
+                setHighlightLeadId(lead.id)
+                setHighlightKPIs(true)
+                setTimeout(() => setHighlightKPIs(false), 1500)
+                setTimeout(() => setHighlightLeadId(null), 2200)
+
+                return { ...base, leads, totals, funnel, by_product }
+            })
+        }
+        window.addEventListener('bami:autopilot:done', onDone)
+        return () => window.removeEventListener('bami:autopilot:done', onDone)
     }, [])
 
     // -------- Derivados ----------
@@ -179,11 +251,11 @@ export default function BamOpsPanel() {
     const csatN = data?.csat?.responses ?? 0
 
     const stageSegments = [
-        { key: 'requiere', label: 'Requiere', value: funnel?.requiere || 0, color: '#e5e7eb' },
-        { key: 'recibido', label: 'Recibido', value: funnel?.recibido || 0, color: '#fde68a' },
-        { key: 'en_revision', label: 'En revisión', value: funnel?.en_revision || 0, color: '#86efac' },
-        { key: 'aprobado', label: 'Aprobado', value: funnel?.aprobado || 0, color: '#93c5fd' },
-        { key: 'alternativa', label: 'Alternativa', value: funnel?.alternativa || 0, color: '#c4b5fd' },
+        { key: 'requiere',   label: 'Requiere',   value: funnel?.requiere || 0,   color: '#e5e7eb' },
+        { key: 'recibido',   label: 'Recibido',   value: funnel?.recibido || 0,   color: '#fde68a' },
+        { key: 'en_revision',label: 'En revisión',value: funnel?.en_revision || 0, color: '#86efac' },
+        { key: 'aprobado',   label: 'Aprobado',   value: funnel?.aprobado || 0,   color: '#93c5fd' },
+        { key: 'alternativa',label: 'Alternativa',value: funnel?.alternativa || 0, color: '#c4b5fd' },
     ]
 
     const leadsCompact = (data?.leads || []).slice(0, 14)
@@ -197,29 +269,18 @@ export default function BamOpsPanel() {
                 <span className="ml-2 text-xs text-gray-500">(demo listo para presentación)</span>
             </h3>
 
-            {/* =================== Indicadores clave =================== */}
+            {/* Indicadores clave */}
             <div className="mt-2">
                 <div className="text-xs text-gray-500 mb-1">Indicadores clave</div>
 
                 {/* Móvil: carrusel horizontal */}
                 <div className="flex gap-3 overflow-x-auto sm:hidden no-scrollbar pb-1">
                     <div className="min-w-[260px]">
-                        <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col justify-between">
-                            <div className="flex items-center justify-between">
-                                <div className="text-xs text-gray-500">Tiempo prom. de atención</div>
-                                <Clock size={16} className="text-gray-400" />
-                            </div>
-                            <div>
-                                <div className="text-2xl font-bold">{fmtMinutesToHM(avgMinutes)}</div>
-                                <div className="text-xs text-gray-500 mt-1">
-                                    {avgMinutes == null ? 'Aún sin datos' : 'Desde primer contacto hasta primera atención'}
-                                </div>
-                            </div>
-                        </div>
+                        <Card title="Tiempo prom. de atención" value={fmtMinutesToHM(avgMinutes)} hint={avgMinutes == null ? 'Aún sin datos' : 'Desde primer contacto hasta primera atención'} highlight={highlightKPIs} />
                     </div>
 
                     <div className="min-w-[260px]">
-                        <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex items-center gap-3">
+                        <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex items-center gap-3" style={highlightKPIs ? { animation: 'bamiFlash 1400ms ease-out' } : undefined}>
                             <div className="shrink-0">
                                 <ProgressRing size={64} stroke={8} value={atendidosPct} label={`${atendidosPct}%`} />
                             </div>
@@ -237,7 +298,7 @@ export default function BamOpsPanel() {
                     </div>
 
                     <div className="min-w-[260px]">
-                        <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col">
+                        <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col" style={highlightKPIs ? { animation: 'bamiFlash 1400ms ease-out' } : undefined}>
                             <div className="flex items-center justify-between">
                                 <div className="text-xs text-gray-500">Distribución por etapa</div>
                                 <BarChart3 size={16} className="text-gray-400" />
@@ -249,7 +310,7 @@ export default function BamOpsPanel() {
                     </div>
 
                     <div className="min-w-[260px]">
-                        <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col justify-between">
+                        <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col justify-between" style={highlightKPIs ? { animation: 'bamiFlash 1400ms ease-out' } : undefined}>
                             <div className="flex items-center justify-between">
                                 <div className="text-xs text-gray-500">Satisfacción del cliente</div>
                                 <TrendingUp size={16} className="text-gray-400" />
@@ -268,20 +329,8 @@ export default function BamOpsPanel() {
                     className="hidden sm:grid gap-3"
                     style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}
                 >
-                    <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col justify-between">
-                        <div className="flex items-center justify-between">
-                            <div className="text-xs text-gray-500">Tiempo prom. de atención</div>
-                            <Clock size={16} className="text-gray-400" />
-                        </div>
-                        <div>
-                            <div className="text-2xl font-bold">{fmtMinutesToHM(avgMinutes)}</div>
-                            <div className="text-xs text-gray-500 mt-1">
-                                {avgMinutes == null ? 'Aún sin datos' : 'Desde primer contacto hasta primera atención'}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex items-center gap-3">
+                    <Card title="Tiempo prom. de atención" value={fmtMinutesToHM(avgMinutes)} hint={avgMinutes == null ? 'Aún sin datos' : 'Desde primer contacto hasta primera atención'} highlight={highlightKPIs} />
+                    <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex items-center gap-3" style={highlightKPIs ? { animation: 'bamiFlash 1400ms ease-out' } : undefined}>
                         <div className="shrink-0">
                             <ProgressRing size={64} stroke={8} value={atendidosPct} label={`${atendidosPct}%`} />
                         </div>
@@ -296,8 +345,7 @@ export default function BamOpsPanel() {
                             <div className="text-xs text-gray-500 truncate">Leads que ya entraron al flujo</div>
                         </div>
                     </div>
-
-                    <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col">
+                    <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col" style={highlightKPIs ? { animation: 'bamiFlash 1400ms ease-out' } : undefined}>
                         <div className="flex items-center justify-between">
                             <div className="text-xs text-gray-500">Distribución por etapa</div>
                             <BarChart3 size={16} className="text-gray-400" />
@@ -306,8 +354,7 @@ export default function BamOpsPanel() {
                             <StackedBar segments={stageSegments} />
                         </div>
                     </div>
-
-                    <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col justify-between">
+                    <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col justify-between" style={highlightKPIs ? { animation: 'bamiFlash 1400ms ease-out' } : undefined}>
                         <div className="flex items-center justify-between">
                             <div className="text-xs text-gray-500">Satisfacción del cliente</div>
                             <TrendingUp size={16} className="text-gray-400" />
@@ -325,8 +372,8 @@ export default function BamOpsPanel() {
 
             {/* KPIs resumidos */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-4">
-                <Card title="Leads totales" value={totals?.cases ?? 0} className="min-h-[104px]" />
-                <Card title="Aprobados" value={totals?.aprobados ?? 0} hint={`Tasa ${(totals?.approval_rate * 100 || 0).toFixed(0)}%`} className="min-h-[104px]" />
+                <Card title="Leads totales" value={totals?.cases ?? 0} className="min-h-[104px]" highlight={highlightKPIs} />
+                <Card title="Aprobados" value={totals?.aprobados ?? 0} hint={`Tasa ${(totals?.approval_rate * 100 || 0).toFixed(0)}%`} className="min-h-[104px]" highlight={highlightKPIs} />
                 <Card title="Alternativa" value={totals?.alternativas ?? 0} className="min-h-[104px]" />
                 <Card title="En revisión" value={totals?.en_revision ?? 0} className="min-h-[104px]" />
                 <Card title="Pend. docs prom." value={(totals?.missing_avg || 0).toFixed(1)} className="min-h-[104px]" />
@@ -347,7 +394,10 @@ export default function BamOpsPanel() {
                                     <span>{v} · {pct}%</span>
                                 </div>
                                 <div className="h-2 bg-white border rounded-full overflow-hidden">
-                                    <div className="h-full bg-bami-yellow" style={{ width: `${pct}%` }} />
+                                    <div
+                                        className="h-full bg-bami-yellow"
+                                        style={{ width: `${pct}%`, transition: 'width 1.6s cubic-bezier(0.22,1,0.36,1)' }}
+                                    />
                                 </div>
                             </div>
                         )
@@ -360,7 +410,10 @@ export default function BamOpsPanel() {
                 <div className="font-semibold mb-2">Etapa actual de cada lead</div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                     {(data?.leads || []).slice(0, 14).map((row) => (
-                        <div key={row.id} className="p-3 rounded-xl border bg-white flex items-center justify-between gap-3">
+                        <div
+                            key={row.id}
+                            className={`p-3 rounded-xl border bg-white flex items-center justify-between gap-3 ${row.id === highlightLeadId ? 'bami-new-lead' : ''}`}
+                        >
                             <div className="min-w-0">
                                 <div className="text-sm font-semibold truncate">{row.applicant?.name || row.id}</div>
                                 <div className="text-xs text-gray-500 truncate">{row.product} · <span className="uppercase">{row.channel}</span></div>
@@ -404,7 +457,7 @@ export default function BamOpsPanel() {
                         </thead>
                         <tbody>
                         {(data?.leads || []).map((row) => (
-                            <tr key={row.id} className="border-t">
+                            <tr key={row.id} className={`border-top ${row.id === highlightLeadId ? 'bami-new-lead' : ''}`}>
                                 <td className="py-2 pr-3 font-mono">{row.id}</td>
                                 <td className="py-2 pr-3">{row.product}</td>
                                 <td className="py-2 pr-3 uppercase">{row.channel}</td>

@@ -6,6 +6,10 @@ export default function ProgressRing({ size = 72, stroke = 8, value = 0, label =
     const c = 2 * Math.PI * r
     const pct = Math.min(Math.max(value, 0), 100)
     const dash = (pct / 100) * c
+
+    // Transición suave y lenta para sentir el avance entre etapas
+    const transition = 'stroke-dasharray 1.9s cubic-bezier(0.22,1,0.36,1)'
+
     return (
         <div className="relative inline-block" style={{ width: size, height: size }}>
             <svg width={size} height={size} role="img" aria-label={`Progreso ${pct}%`}>
@@ -21,6 +25,7 @@ export default function ProgressRing({ size = 72, stroke = 8, value = 0, label =
                     fill="none"
                     strokeDasharray={`${dash} ${c - dash}`}
                     transform={`rotate(-90 ${size / 2} ${size / 2})`}
+                    style={{ transition }}
                 />
             </svg>
             <div className="absolute inset-0 grid place-items-center text-xs font-semibold">
