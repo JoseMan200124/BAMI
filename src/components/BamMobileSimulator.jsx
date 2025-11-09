@@ -11,6 +11,10 @@ import BamOpsPanel from './BamOpsPanel.jsx'
 
 /**
  * Simulador visual de la app móvil BAM.
+ * Ajustes clave anti-flicker:
+ *  - Shell con dimensiones en px (congeladas) y sólo recalculadas en "resize".
+ *  - Aislamiento de layout con `contain` + capa propia (`translateZ(0)`).
+ *  - Modales internos con maxHeight relativo al shell (no al viewport).
  */
 const YELLOW = '#FFD400'
 const BG = '#101214'
@@ -19,13 +23,35 @@ const BORDER = '#2A2E33'
 const TEXT = '#EDEFF1'
 const MUTED = '#A7AFB7'
 
+// límites del shell
+const SHELL_MAX_W = 420
+const SHELL_MAX_H = 840
+const SHELL_VW   = 0.92   // 92% del viewport
+const SHELL_VH   = 0.92   // 92% del viewport
+
 export default function BamMobileSimulator({ open = false, onClose = () => {} }) {
     const [tab, setTab] = useState('gestionar')
     const [screen, setScreen] = useState('root') // root | bami-chat
     const [showTracker, setShowTracker] = useState(false)
     const [showOps, setShowOps] = useState(false)
 
-    // Lock scroll
+    // Tamaño CONGELADO del teléfono (en px). Sólo se recalcula en "resize".
+    const [shellSize, setShellSize] = useState(() => {
+        const w = Math.min(SHELL_MAX_W, Math.round(window.innerWidth * SHELL_VW))
+        const h = Math.min(SHELL_MAX_H, Math.round(window.innerHeight * SHELL_VH))
+        return { w, h }
+    })
+    useEffect(() => {
+        const recalc = () => {
+            const w = Math.min(SHELL_MAX_W, Math.round(window.innerWidth * SHELL_VW))
+            const h = Math.min(SHELL_MAX_H, Math.round(window.innerHeight * SHELL_VH))
+            setShellSize((prev) => (prev.w !== w || prev.h !== h) ? { w, h } : prev)
+        }
+        window.addEventListener('resize', recalc, { passive: true })
+        return () => window.removeEventListener('resize', recalc)
+    }, [])
+
+    // Lock scroll documento
     useEffect(() => {
         if (!open) return
         const prev = document.body.style.overflow
@@ -40,15 +66,6 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
         window.__BAMI_DISABLE_FLOATING__ = true
         return () => { window.__BAMI_DISABLE_FLOATING__ = prev }
     }, [open])
-
-    // SVH var
-    useEffect(() => {
-        const setVH = () =>
-            document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`)
-        setVH()
-        window.addEventListener('resize', setVH)
-        return () => window.removeEventListener('resize', setVH)
-    }, [])
 
     // Eventos internos del simulador
     useEffect(() => {
@@ -93,11 +110,19 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
     /** Layout helpers **/
     const PhoneShell = ({ children }) => (
         <div
+            data-simulator
             className="relative rounded-[36px] border-[10px] border-black shadow-2xl overflow-hidden z-[4005]"
             style={{
-                width: 'min(420px, 92vw)',
-                height: 'calc(min(92svh, 840px))',
+                // ❗️Tamaño Fijo (anti-flicker) + aislamiento del layout
+                width: `${shellSize.w}px`,
+                height: `${shellSize.h}px`,
                 backgroundColor: 'black',
+                contain: 'strict',
+                willChange: 'transform',
+                transform: 'translateZ(0)',
+                backfaceVisibility: 'hidden',
+                transition: 'none',
+                overflowAnchor: 'none'
             }}
         >
             {/* notch */}
@@ -115,7 +140,7 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
     const AppHeader = ({ title = 'Bam', showBack = false, onBack }) => (
         <div
             className="shrink-0 h-14 px-4 flex items-center justify-between z-[10]"
-            style={{ background: 'linear-gradient(0deg, rgba(20,22,24,1) 0%, rgba(16,18,20,1) 100%)' }}
+            style={{ background: 'linear-gradient(0deg, rgba(20,22,24,1) 0%, rgba(16,18,20,1) 100%)', transition: 'none' }}
         >
             <div className="flex items-center gap-2 text-[15px]" style={{ color: TEXT }}>
                 {showBack ? (
@@ -134,7 +159,7 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
     )
 
     const SectionTitle = ({ children }) => (
-        <div className="px-4 pt-3 pb-2 text-sm" style={{ color: MUTED }}>{children}</div>
+        <div className="px-4 pt-3 pb-2 text-sm" style={{ color: MUTED, transition: 'none' }}>{children}</div>
     )
 
     const Grid = ({ children }) => (
@@ -144,11 +169,15 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
     const Tile = ({ icon: Icon, label, hint, onClick }) => (
         <button
             onClick={onClick}
-            className="p-3 rounded-2xl text-left transition active:scale-[0.99]"
-            style={{ backgroundColor: CARD, border: `1px solid ${BORDER}`, color: TEXT }}
+            className="p-3 rounded-2xl text-left active:scale-[0.99]"
+            style={{
+                backgroundColor: CARD,
+                border: `1px solid ${BORDER}`,
+                color: TEXT,
+                transition: 'transform 120ms ease-out, background-color 0ms, color 0ms, border-color 0ms'
+            }}
         >
-            <div className="w-11 h-11 grid place-items-center rounded-full mb-2"
-                 style={{ backgroundColor: '#2A2D31' }}>
+            <div className="w-11 h-11 grid place-items-center rounded-full mb-2" style={{ backgroundColor: '#2A2D31' }}>
                 <Icon size={20} color={TEXT}/>
             </div>
             <div className="text-[15px] font-medium">{label}</div>
@@ -165,7 +194,8 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
                 style={{
                     color: active ? 'black' : MUTED,
                     backgroundColor: active ? YELLOW : BG,
-                    borderTop: `1px solid ${BORDER}`
+                    borderTop: `1px solid ${BORDER}`,
+                    transition: 'background-color 0ms, color 0ms, border-color 0ms'
                 }}
                 aria-label={label}
             >
@@ -260,6 +290,8 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
             if (window.__BAMI_LOCK_TRACKER__ || window.__BAMI_AGENT_ACTIVE__) return
             onClose?.()
         }
+        // altura máxima relativa al SHELL (no al viewport)
+        const modalMaxH = Math.max(280, Math.floor(shellSize.h * 0.78))
         return (
             <div className="absolute inset-0 z-[45]" style={{ pointerEvents: 'auto' }}>
                 <div className="absolute inset-0 bg-black/60" onClick={safeClose} />
@@ -274,7 +306,10 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
                                 <X size={16}/>
                             </button>
                         </div>
-                        <div className="max-h-[78svh] overflow-auto p-3 sm:p-4">
+                        <div
+                            className="overflow-auto p-3 sm:p-4"
+                            style={{ maxHeight: `${modalMaxH}px` }}
+                        >
                             {children}
                         </div>
                     </div>
@@ -291,9 +326,20 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
             return (
                 <>
                     <AppHeader title="Bam" showBack onBack={() => setScreen('root')} />
-                    <div className="relative flex-1 overflow-hidden" style={{ backgroundColor: '#ffffff', color: '#000000' }}>
-                        {/* Chat ocupa 100% del alto del teléfono */}
-                        <div className="absolute inset-0" style={{ pointerEvents: modalOpen ? 'none' : 'auto' }}>
+                    <div
+                        className="relative flex-1 overflow-hidden"
+                        style={{ backgroundColor: '#ffffff', color: '#000000' }}
+                    >
+                        {/* Chat ocupa 100% del alto del teléfono, aislado */}
+                        <div
+                            className="absolute inset-0"
+                            style={{
+                                pointerEvents: modalOpen ? 'none' : 'auto',
+                                contain: 'layout paint size',
+                                willChange: 'transform',
+                                transform: 'translateZ(0)'
+                            }}
+                        >
                             <BamiChatWidget variant="app" disableFloatingTrigger embed />
                         </div>
 
