@@ -17,6 +17,7 @@ function Card({ title, value, hint, children, className = '' }) {
         </div>
     )
 }
+
 function Pill({ children, color = 'default' }) {
     const colorMap = {
         default: 'bg-gray-100 text-gray-700 border-gray-200',
@@ -26,8 +27,13 @@ function Pill({ children, color = 'default' }) {
         aprobado: 'bg-blue-50 text-blue-800 border-blue-200',
         alternativa: 'bg-violet-50 text-violet-800 border-violet-200',
     }
-    return <span className={'px-2 py-0.5 rounded-full text-xs border ' + (colorMap[color] || colorMap.default)}>{children}</span>
+    return (
+        <span className={'px-2 py-0.5 rounded-full text-xs border ' + (colorMap[color] || colorMap.default)}>
+      {children}
+    </span>
+    )
 }
+
 function StackedBar({ segments }) {
     const total = Math.max(1, segments.reduce((a, b) => a + (b.value || 0), 0))
     return (
@@ -36,7 +42,14 @@ function StackedBar({ segments }) {
                 <div className="flex h-full w-full">
                     {segments.map((s) => {
                         const pct = ((s.value || 0) / total) * 100
-                        return <div key={s.key} style={{ width: `${pct}%`, backgroundColor: s.color }} className="h-full" title={`${s.label}: ${s.value}`} />
+                        return (
+                            <div
+                                key={s.key}
+                                style={{ width: `${pct}%`, backgroundColor: s.color }}
+                                className="h-full"
+                                title={`${s.label}: ${s.value}`}
+                            />
+                        )
                     })}
                 </div>
             </div>
@@ -52,17 +65,29 @@ function StackedBar({ segments }) {
         </div>
     )
 }
+
 function Stars({ value = 0, size = 16 }) {
     const full = Math.floor(value)
     const half = value - full >= 0.5
     return (
         <div className="flex items-center gap-1">
-            {[0,1,2,3,4].map((i) => (
-                <Star key={i} size={size} className={i < full ? 'text-yellow-500 fill-yellow-500' : i === full && half ? 'text-yellow-500 fill-yellow-300' : 'text-gray-300'} />
+            {[0, 1, 2, 3, 4].map((i) => (
+                <Star
+                    key={i}
+                    size={size}
+                    className={
+                        i < full
+                            ? 'text-yellow-500 fill-yellow-500'
+                            : i === full && half
+                                ? 'text-yellow-500 fill-yellow-300'
+                                : 'text-gray-300'
+                    }
+                />
             ))}
         </div>
     )
 }
+
 function fmtMinutesToHM(min) {
     if (min == null) return '—'
     const m = Math.round(min)
@@ -71,134 +96,44 @@ function fmtMinutesToHM(min) {
     return h > 0 ? `${h}h ${mm}m` : `${mm}m`
 }
 
-/* ----------------------- Datos simulados (snapshot) ----------------------- */
-function rand(seed) { let s = seed ?? Date.now(); return () => (s = (s * 1664525 + 1013904223) % 4294967296) / 4294967296 }
-function generateOpsData(seed = Date.now()) {
-    const r = rand(seed)
-    const totalCases = 140 + Math.floor(r() * 120) // 140-260
-    const aprobados   = Math.floor(totalCases * (0.58 + r() * 0.18))
-    const alternativas= Math.floor(totalCases * (0.07 + r() * 0.06))
-    const enRevision  = Math.floor(totalCases * (0.12 + r() * 0.10))
-    const recibido    = Math.max(0, Math.floor(totalCases * (0.05 + r() * 0.06)))
-    const requiere    = Math.max(0, totalCases - (aprobados + alternativas + enRevision + recibido))
-
-    const byProduct = {
-        'Tarjeta de Crédito': Math.floor(totalCases * (0.38 + r() * 0.10)),
-        'Préstamo Personal':  Math.floor(totalCases * (0.24 + r() * 0.12)),
-        'Cuenta de Ahorro':   Math.floor(totalCases * (0.16 + r() * 0.10)),
-        'Seguro de Vida':     0,
-    }
-    const sumFirst3 = byProduct['Tarjeta de Crédito'] + byProduct['Préstamo Personal'] + byProduct['Cuenta de Ahorro']
-    byProduct['Seguro de Vida'] = Math.max(0, totalCases - sumFirst3)
-
-    const leads = Array.from({ length: Math.min(28, totalCases) }).map((_, i) => {
-        const stagePool = ['requiere','recibido','en_revision','aprobado','alternativa']
-        const stage = stagePool[Math.floor(r() * stagePool.length)]
-        const prods = Object.keys(byProduct)
-        const product = prods[Math.floor(r() * prods.length)]
-        const channels = ['web','app','sucursal','chat']
-        const channel = channels[Math.floor(r() * channels.length)]
-        const missing = stage === 'requiere' ? 1 + Math.floor(r() * 3) : Math.floor(r() * 2)
-        return {
-            id: `L${(100000 + Math.floor(r() * 899999)).toString(10)}`,
-            product, channel, stage,
-            missing_count: missing,
-            created_at: new Date(Date.now() - Math.floor(r() * 86400000)).toISOString(),
-            applicant: { name: `Cliente ${i + 1}` },
-        }
-    })
-
-    const totals = {
-        cases: totalCases,
-        aprobados,
-        alternativas,
-        en_revision: enRevision,
-        approval_rate: aprobados / totalCases,
-        missing_avg: leads.reduce((a, b) => a + b.missing_count, 0) / Math.max(1, leads.length),
-    }
-    const funnel = { requiere, recibido, en_revision: enRevision, aprobado: aprobados, alternativa: alternativas }
-    const sla = { avg_minutes: 25 + Math.floor(r() * 55) }
-    const csat = { avg: 4.1 + r() * 0.6, responses: 120 + Math.floor(r() * 220) }
-    return { totals, funnel, sla, csat, leads, by_product: byProduct }
-}
-
-// Mezcla: si backend no trae todos los campos, se completa con sim.
-function enrichWithSim(backend, seed = Date.now()) {
-    const sim = generateOpsData(seed)
-    const safe = (obj, path, fallback) => path.reduce((o, k) => (o && o[k] != null ? o[k] : undefined), obj) ?? fallback
-    if (!backend || typeof backend !== 'object') return sim
-    const merged = {
-        totals: {
-            cases: safe(backend, ['totals','cases'], sim.totals.cases),
-            aprobados: safe(backend, ['totals','aprobados'], sim.totals.aprobados),
-            alternativas: safe(backend, ['totals','alternativas'], sim.totals.alternativas),
-            en_revision: safe(backend, ['totals','en_revision'], sim.totals.en_revision),
-            approval_rate: safe(backend, ['totals','approval_rate'], sim.totals.approval_rate),
-            missing_avg: safe(backend, ['totals','missing_avg'], sim.totals.missing_avg),
-        },
-        funnel: {
-            requiere: safe(backend, ['funnel','requiere'], sim.funnel.requiere),
-            recibido: safe(backend, ['funnel','recibido'], sim.funnel.recibido),
-            en_revision: safe(backend, ['funnel','en_revision'], sim.funnel.en_revision),
-            aprobado: safe(backend, ['funnel','aprobado'], sim.funnel.aprobado),
-            alternativa: safe(backend, ['funnel','alternativa'], sim.funnel.alternativa),
-        },
-        sla: {
-            avg_minutes: safe(backend, ['sla','avg_minutes'], sim.sla.avg_minutes),
-        },
-        csat: {
-            avg: safe(backend, ['csat','avg'], sim.csat.avg),
-            responses: safe(backend, ['csat','responses'], sim.csat.responses),
-        },
-        leads: Array.isArray(backend?.leads) && backend.leads.length ? backend.leads : sim.leads,
-        by_product: backend?.by_product && Object.keys(backend.by_product).length ? backend.by_product : sim.by_product,
-    }
-    return merged
-}
-
-/* ------------------------------ Panel ------------------------------ */
+/* ------------------------------ Main panel ------------------------------ */
 export default function BamOpsPanel() {
+    // Autologin DEMO: nunca pedimos credenciales
     const [data, setData] = useState(null)
-    const [loadedOnce, setLoadedOnce] = useState(false) // snapshot único
 
-    // Cargar UNA VEZ: si backend no está completo, se rellena con sim.
-    useEffect(() => {
-        const load = async () => {
-            let d = null
-            try {
-                if (!localStorage.getItem(TOKEN_KEY)) localStorage.setItem(TOKEN_KEY, 'demo')
-                const backend = await api.adminAnalytics()
-                d = enrichWithSim(backend)
-            } catch {
-                d = generateOpsData()
-            } finally {
-                setData(d)
-                setLoadedOnce(true)
+    const fetchData = async () => {
+        try {
+            // Garantiza que exista un token demo para clientes que lo lean del localStorage
+            if (!localStorage.getItem(TOKEN_KEY)) {
+                localStorage.setItem(TOKEN_KEY, 'demo')
             }
+            const d = await api.adminAnalytics()
+            setData(d)
+        } catch {
+            // Si el backend requiere token real, mostramos el panel en modo demo (sin datos)
+            setData(null)
         }
-        load()
+    }
+
+    useEffect(() => {
+        fetchData()
+        const t = setInterval(fetchData, 10000)
+        return () => clearInterval(t)
     }, [])
 
-    // Permitir que el Autopilot fuerce un snapshot una sola vez si aún no cargó
-    useEffect(() => {
-        const onSim = (e) => {
-            if (loadedOnce && data) return
-            const seed = e?.detail?.seed ?? Date.now()
-            setData(generateOpsData(seed))
-            setLoadedOnce(true)
-        }
-        window.addEventListener('ops:simulate:start', onSim)
-        return () => window.removeEventListener('ops:simulate:start', onSim)
-    }, [loadedOnce, data])
-
+    // -------- Derivados ----------
     const totals = useMemo(() => data?.totals || {}, [data])
     const funnel = useMemo(() => data?.funnel || {}, [data])
 
     const totalLeads = totals?.cases || 0
-    const atendidos = (funnel?.recibido || 0) + (funnel?.en_revision || 0) + (funnel?.aprobado || 0) + (funnel?.alternativa || 0)
+    const atendidos =
+        (funnel?.recibido || 0) +
+        (funnel?.en_revision || 0) +
+        (funnel?.aprobado || 0) +
+        (funnel?.alternativa || 0)
     const atendidosPct = totalLeads ? Math.round((atendidos * 100) / totalLeads) : 0
 
-    const avgMinutes = data?.sla?.avg_minutes ?? null
+    const avgMinutes = data?.sla?.avg_minutes ?? data?.totals?.avg_response_minutes ?? null
     const csatAvg = data?.csat?.avg ?? null
     const csatN = data?.csat?.responses ?? 0
 
@@ -210,21 +145,23 @@ export default function BamOpsPanel() {
         { key: 'alternativa', label: 'Alternativa', value: funnel?.alternativa || 0, color: '#c4b5fd' },
     ]
 
+    const leadsCompact = (data?.leads || []).slice(0, 14)
+
     return (
-        <div className="card" data-agent-area="panel-bam-ops">
+        <div className="card">
             <div className="text-xs text-gray-500 mb-1">Equipo BAM</div>
             <h3 className="h3 mb-2 flex items-center gap-2">
                 <img src="/BAMI.svg" alt="BAMI" className="w-5 h-5 rounded-full" />
                 <span>Panel de análisis y leads</span>
             </h3>
 
-            {/* Indicadores clave */}
+            {/* =================== Indicadores clave =================== */}
             <div className="mt-2">
                 <div className="text-xs text-gray-500 mb-1">Indicadores clave</div>
 
-                {/* móvil */}
+                {/* Móvil: carrusel horizontal */}
                 <div className="flex gap-3 overflow-x-auto sm:hidden no-scrollbar pb-1">
-                    <div className="min-w=[260px]">
+                    <div className="min-w-[260px]">
                         <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col justify-between">
                             <div className="flex items-center justify-between">
                                 <div className="text-xs text-gray-500">Tiempo prom. de atención</div>
@@ -232,10 +169,13 @@ export default function BamOpsPanel() {
                             </div>
                             <div>
                                 <div className="text-2xl font-bold">{fmtMinutesToHM(avgMinutes)}</div>
-                                <div className="text-xs text-gray-500 mt-1">{avgMinutes == null ? 'Aún sin datos' : 'Desde primer contacto hasta primera atención'}</div>
+                                <div className="text-xs text-gray-500 mt-1">
+                                    {avgMinutes == null ? 'Aún sin datos' : 'Desde primer contacto hasta primera atención'}
+                                </div>
                             </div>
                         </div>
                     </div>
+
                     <div className="min-w-[260px]">
                         <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex items-center gap-3">
                             <div className="shrink-0">
@@ -246,20 +186,26 @@ export default function BamOpsPanel() {
                                     <span>% Atendidos vs Generados</span>
                                     <CheckCircle2 size={16} className="text-gray-400" />
                                 </div>
-                                <div className="text-sm font-semibold mt-1 truncate">{atendidos}/{totalLeads} atendidos</div>
+                                <div className="text-sm font-semibold mt-1 truncate">
+                                    {atendidos}/{totalLeads} atendidos
+                                </div>
                                 <div className="text-xs text-gray-500 truncate">Leads que ya entraron al flujo</div>
                             </div>
                         </div>
                     </div>
+
                     <div className="min-w-[260px]">
                         <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col">
                             <div className="flex items-center justify-between">
                                 <div className="text-xs text-gray-500">Distribución por etapa</div>
                                 <BarChart3 size={16} className="text-gray-400" />
                             </div>
-                            <div className="mt-2"><StackedBar segments={stageSegments} /></div>
+                            <div className="mt-2">
+                                <StackedBar segments={stageSegments} />
+                            </div>
                         </div>
                     </div>
+
                     <div className="min-w-[260px]">
                         <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col justify-between">
                             <div className="flex items-center justify-between">
@@ -275,8 +221,11 @@ export default function BamOpsPanel() {
                     </div>
                 </div>
 
-                {/* ≥ sm */}
-                <div className="hidden sm:grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
+                {/* ≥ sm: auto-fit */}
+                <div
+                    className="hidden sm:grid gap-3"
+                    style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}
+                >
                     <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col justify-between">
                         <div className="flex items-center justify-between">
                             <div className="text-xs text-gray-500">Tiempo prom. de atención</div>
@@ -284,18 +233,24 @@ export default function BamOpsPanel() {
                         </div>
                         <div>
                             <div className="text-2xl font-bold">{fmtMinutesToHM(avgMinutes)}</div>
-                            <div className="text-xs text-gray-500 mt-1">{avgMinutes == null ? 'Aún sin datos' : 'Desde primer contacto hasta primera atención'}</div>
+                            <div className="text-xs text-gray-500 mt-1">
+                                {avgMinutes == null ? 'Aún sin datos' : 'Desde primer contacto hasta primera atención'}
+                            </div>
                         </div>
                     </div>
 
                     <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex items-center gap-3">
-                        <div className="shrink-0"><ProgressRing size={64} stroke={8} value={atendidosPct} label={`${atendidosPct}%`} /></div>
+                        <div className="shrink-0">
+                            <ProgressRing size={64} stroke={8} value={atendidosPct} label={`${atendidosPct}%`} />
+                        </div>
                         <div className="min-w-0">
                             <div className="text-xs text-gray-500 flex items-center justify-between">
                                 <span>% Atendidos vs Generados</span>
                                 <CheckCircle2 size={16} className="text-gray-400" />
                             </div>
-                            <div className="text-sm font-semibold mt-1 truncate">{atendidos}/{totalLeads} atendidos</div>
+                            <div className="text-sm font-semibold mt-1 truncate">
+                                {atendidos}/{totalLeads} atendidos
+                            </div>
                             <div className="text-xs text-gray-500 truncate">Leads que ya entraron al flujo</div>
                         </div>
                     </div>
@@ -305,7 +260,9 @@ export default function BamOpsPanel() {
                             <div className="text-xs text-gray-500">Distribución por etapa</div>
                             <BarChart3 size={16} className="text-gray-400" />
                         </div>
-                        <div className="mt-2"><StackedBar segments={stageSegments} /></div>
+                        <div className="mt-2">
+                            <StackedBar segments={stageSegments} />
+                        </div>
                     </div>
 
                     <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col justify-between">
@@ -317,7 +274,9 @@ export default function BamOpsPanel() {
                             <Stars value={csatAvg || 0} />
                             <div className="text-lg font-bold">{csatAvg == null ? '—' : csatAvg.toFixed(1)}</div>
                         </div>
-                        <div className="text-xs text-gray-500">{csatAvg == null ? 'Conecta tu encuesta post-atención' : `${csatN} respuestas`}</div>
+                        <div className="text-xs text-gray-500">
+                            {csatAvg == null ? 'Conecta tu encuesta post-atención' : `${csatN} respuestas`}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -354,7 +313,7 @@ export default function BamOpsPanel() {
                 </div>
             </div>
 
-            {/* Etapa actual de cada lead */}
+            {/* Etapa actual de cada lead (lista compacta) */}
             <div className="mt-6 p-4 bg-gray-50 rounded-xl">
                 <div className="font-semibold mb-2">Etapa actual de cada lead</div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -385,7 +344,7 @@ export default function BamOpsPanel() {
                 </div>
             </div>
 
-            {/* Tabla */}
+            {/* Leads recientes (tabla) */}
             <div className="mt-6">
                 <div className="font-semibold mb-2">Leads recientes</div>
                 <div className="overflow-auto -mx-2 sm:mx-0">
@@ -408,7 +367,7 @@ export default function BamOpsPanel() {
                                 <td className="py-2 pr-3">{row.product}</td>
                                 <td className="py-2 pr-3 uppercase">{row.channel}</td>
                                 <td className="py-2 pr-3">{row.applicant?.name || '-'}</td>
-                                <td className="py-2 pr-3 capitalize">{row.stage?.replace('_',' ')}</td>
+                                <td className="py-2 pr-3 capitalize">{row.stage.replace('_',' ')}</td>
                                 <td className="py-2 pr-3">{row.missing_count}</td>
                                 <td className="py-2 pr-3">{new Date(row.created_at).toLocaleString()}</td>
                             </tr>

@@ -1,6 +1,7 @@
 // src/components/CaseTracker.jsx
+// Mantiene la simulación por eventos. Aunque active={false}, sigue escuchando
+// 'tracker:simulate:start' (gracias a que BamiHub monta una instancia oculta).
 // Secuencia visible: requiere (10) → recibido (35) → en_revision (70) → aprobado (100).
-// Blindajes anti-freeze: no permite simulaciones en paralelo ni timers huérfanos.
 
 import React, { useEffect, useRef, useState } from 'react'
 import { getCase, refreshTracker } from '../lib/caseStore.js'
@@ -45,7 +46,7 @@ export default function CaseTracker({ active = true }) {
     const [c, setC] = useState(getCase())
     const [sim, setSim] = useState({ on: false, stage: null, percent: null, missing: null })
     const timerRef = useRef(0)
-    const runningRef = useRef(false)
+    const lastRunIdRef = useRef(null)
     const lastPercentRef = useRef(0)
 
     useGlobalTrackerPolling(active && !sim.on)
@@ -61,7 +62,7 @@ export default function CaseTracker({ active = true }) {
             const now = getCase() || {}
             const curPct = now.percent ?? 0
             const newPct = step.percent ?? curPct
-            if (newPct < curPct) return
+            if (newPct < curPct) return // nunca retroceder
 
             const entry = { at: Date.now(), stage: step.stage, note: step.log || 'sim' }
             const next = {
@@ -78,31 +79,23 @@ export default function CaseTracker({ active = true }) {
     }
 
     const stagesSequence = [
-        { stage: 'requiere',    percent: 10,  delay: 420,  missing: ['dpi', 'selfie', 'comprobante_domicilio'], log: 'Expediente iniciado.' },
-        { stage: 'recibido',    percent: 35,  delay: 640,  missing: ['selfie', 'comprobante_domicilio'],       log: 'Recepción confirmada.' },
-        { stage: 'en_revision', percent: 70,  delay: 820,  missing: [],                                        log: 'En revisión operativa.' },
-        { stage: 'aprobado',    percent: 100, delay: 620,  missing: [],                                        log: 'Autorizado.' },
+        { stage: 'requiere',    percent: 10,  delay: 500,  missing: ['dpi', 'selfie', 'comprobante_domicilio'], log: 'Expediente iniciado.' },
+        { stage: 'recibido',    percent: 35,  delay: 900,  missing: ['selfie', 'comprobante_domicilio'],       log: 'Recepción confirmada.' },
+        { stage: 'en_revision', percent: 70,  delay: 1100, missing: [],                                        log: 'En revisión operativa.' },
+        { stage: 'aprobado',    percent: 100, delay: 900,  missing: [],                                        log: 'Autorizado.' },
     ]
 
     const runDemo = () => {
-        if (runningRef.current) return
         clearTimeout(timerRef.current)
-
         const startIdx = Math.max(0, stagesSequence.findIndex(s => (c?.percent ?? 0) < s.percent))
         const steps = stagesSequence.slice(startIdx)
-        if (!steps.length) return
-
-        runningRef.current = true
+        if (!steps.length) { setSim(s => ({ ...s, on: false })); return }
         setSim({ on: true, ...steps[0] })
         pushToStore(steps[0])
 
         let i = 1
         const next = () => {
-            if (i >= steps.length) {
-                setSim(s => ({ ...s, on: false }))
-                runningRef.current = false
-                return
-            }
+            if (i >= steps.length) { setSim(s => ({ ...s, on: false })); return }
             setSim(s => ({ ...s, ...steps[i] }))
             pushToStore(steps[i])
             timerRef.current = window.setTimeout(next, steps[i].delay)
@@ -111,13 +104,18 @@ export default function CaseTracker({ active = true }) {
         timerRef.current = window.setTimeout(next, steps[0].delay)
     }
 
+    // Eventos de simulación (CaseTracker escucha incluso oculto)
     useEffect(() => {
-        const onSim = (e) => { runDemo() }
+        const onSim = (e) => {
+            const runId = e?.detail?.runId || `run-${Date.now()}`
+            if (runId === lastRunIdRef.current) return
+            lastRunIdRef.current = runId
+            runDemo()
+        }
         window.addEventListener('tracker:simulate:start', onSim)
         return () => {
             window.removeEventListener('tracker:simulate:start', onSim)
             clearTimeout(timerRef.current)
-            runningRef.current = false
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [c?.percent])
@@ -169,8 +167,8 @@ export default function CaseTracker({ active = true }) {
                         <div className="flex flex-wrap gap-2">
                             {missing.map((d) => (
                                 <span key={d} className="px-2 py-1 rounded-full text-xs bg-white border capitalize">
-                  {d.replaceAll('_', ' ')}
-                </span>
+                                  {d.replaceAll('_', ' ')}
+                                </span>
                             ))}
                         </div>
                     ) : (
