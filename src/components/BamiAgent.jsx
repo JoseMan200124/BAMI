@@ -9,7 +9,7 @@ import { api } from '../lib/apiClient'
  * BAMI Agent — Autopilot:
  * - Cursor circular propio (oculto por defecto y visible sólo en Autopilot).
  * - Oculta el cursor del sistema (flecha) mientras corre Autopilot.
- * - Spotlight: recorta el overlay para resaltar el objetivo incluso si hay sombreado encima.
+ * - Spotlight + Ghost Highlight: recorte y clon visual del objetivo por encima de cualquier overlay.
  * - No reabre el tracker si el usuario lo cerró.
  */
 
@@ -24,12 +24,17 @@ const DUR = {
     halo: 800
 }
 
+/**
+ * Usamos z-index ultra-altos cercanos al límite de 32-bit para garantizar
+ * que SIEMPRE quedemos por encima de cualquier overlay de la app/simulador.
+ */
 const Z = {
-    HUD: 1_999_980,
-    HALO: 1_999_985,
-    TIP: 1_999_990,
-    CURSOR: 2_147_483_646,
-    SPOT: 2_000_000
+    HUD: 2147483588,
+    SPOT: 2147483608,     // Spotlight (oscurece todo menos la región)
+    HALO: 2147483610,     // Halo de foco
+    GHOST: 2147483612,    // Clon/rectángulo del objetivo por encima del overlay
+    TIP: 2147483614,      // Tooltip
+    CURSOR: 2147483616    // Cursor circular
 }
 
 const wait = (ms) => new Promise(r => setTimeout(r, ms))
@@ -128,9 +133,10 @@ export default function BamiAgent({ caseData, product, controls }) {
         transition: { type: 'tween', ease: EASE, duration: 0 }
     })
 
-    // Spotlight y halo
+    // Spotlight, halo y ghost highlight
     const [halo, setHalo] = useState(null)
-    const [spot, setSpot] = useState(null) // {x,y,w,h} para recortar overlay
+    const [spot, setSpot] = useState(null)   // {x,y,w,h}
+    const [ghost, setGhost] = useState(null) // {x,y,w,h, r}  r = borderRadius px
     const [tip, setTip] = useState(null)
 
     // Portal raíz y estilos globales (incluye ocultar cursor del sistema)
@@ -222,13 +228,24 @@ export default function BamiAgent({ caseData, product, controls }) {
         await wait(ms)
         setHalo(null)
     }
+
+    const computeGhostFrom = (el) => {
+        if (!el) { setGhost(null); return }
+        const r = el.getBoundingClientRect()
+        const cs = window.getComputedStyle(el)
+        const br = cs.borderRadius || '12px'
+        const rect = { x: r.left + (window.scrollX || 0), y: r.top + (window.scrollY || 0), w: r.width, h: r.height, r: br }
+        setGhost(rect)
+    }
+
     const setSpotlightFor = (el) => {
-        if (!el) { setSpot(null); return }
+        if (!el) { setSpot(null); setGhost(null); return }
         const r = el.getBoundingClientRect()
         const rect = { x: r.left + (window.scrollX || 0), y: r.top + (window.scrollY || 0), w: r.width, h: r.height }
         setSpot(rect)
+        computeGhostFrom(el) // <<— ghost por encima del overlay
     }
-    const clearSpot = () => setSpot(null)
+    const clearSpot = () => { setSpot(null); setGhost(null) }
 
     const showTipFor = async (el, text) => {
         const r = el?.getBoundingClientRect?.()
@@ -243,7 +260,7 @@ export default function BamiAgent({ caseData, product, controls }) {
 
     const moveToEl = async (el, total=DUR.moveTotal) => {
         if (!el) return
-        setSpotlightFor(el)             // 🔦 spotlight antes
+        setSpotlightFor(el)             // 🔦 spotlight + ghost antes
         await ensureVisible(el)
         const r = el.getBoundingClientRect()
         const finalX = r.left + r.width * 0.5 + (window.scrollX || 0)
@@ -325,7 +342,7 @@ export default function BamiAgent({ caseData, product, controls }) {
                 window.dispatchEvent(new Event('upload:demo'))
                 window.dispatchEvent(new Event('ui:upload:demo'))
                 window.dispatchEvent(new Event('sim:upload:demo'))
-                // Lanzamos simulación del progreso del caso (sin abrir el tracker forzosamente)
+                // Lanzamos simulación del progreso del caso
                 setTimeout(() => simulateTracker(), 700)
             }
         },
@@ -349,7 +366,7 @@ export default function BamiAgent({ caseData, product, controls }) {
             await moveToEl(target)
             await showTipFor(target, step.say)
         } else {
-            setSpot(null)
+            setSpot(null); setGhost(null)
             logLine(step.say)
             await wait(600)
         }
@@ -369,7 +386,7 @@ export default function BamiAgent({ caseData, product, controls }) {
             await wait(600)
             await Promise.resolve(step?.after?.())
         } else {
-            setSpot(null)
+            setSpot(null); setGhost(null)
             logLine(step.say + ' (simulado)')
             try { await Promise.resolve(step.run?.()) } catch {}
             await Promise.resolve(step?.after?.())
@@ -427,7 +444,7 @@ export default function BamiAgent({ caseData, product, controls }) {
 
     /* --------------------------- HUD y capas visuales --------------------------- */
     const hud = (
-        <div id="bami-hud" className="fixed right-4 bottom-4 z-[1999980]">
+        <div id="bami-hud" className="fixed right-4 bottom-4 z-[2147483588]">
             <div className="flex flex-col items-end gap-2 mb-2">
                 <button
                     onClick={() => setOpen(v=>!v)}
@@ -508,7 +525,7 @@ export default function BamiAgent({ caseData, product, controls }) {
                 </motion.div>
             </div>
 
-            {/* 🔦 Spotlight (4 paneles alrededor del objetivo para recortar el sombreado superior) */}
+            {/* 🔦 Spotlight (4 paneles alrededor del objetivo) — sobre CUALQUIER overlay */}
             <AnimatePresence>
                 {spot && (
                     <motion.div
@@ -519,24 +536,38 @@ export default function BamiAgent({ caseData, product, controls }) {
                         className="fixed inset-0 pointer-events-none"
                         style={{ zIndex: Z.SPOT }}
                     >
-                        {/* Paneles oscuros alrededor del rectángulo (x,y,w,h) */}
                         <div className="fixed left-0 top-0 right-0" style={{ height: Math.max(0, spot.y - window.scrollY), background: 'rgba(0,0,0,.45)' }} />
                         <div className="fixed left-0 bottom-0 right-0" style={{ top: spot.y + spot.h, background: 'rgba(0,0,0,.45)' }} />
                         <div className="fixed top-0 bottom-0 left-0" style={{ width: Math.max(0, spot.x - window.scrollX), background: 'rgba(0,0,0,.45)' }} />
                         <div className="fixed top-0 bottom-0" style={{ left: spot.x + spot.w, right: 0, background: 'rgba(0,0,0,.45)' }} />
-                        {/* Borde brillante */}
-                        <div
-                            className="fixed rounded-xl pointer-events-none"
-                            style={{
-                                left: spot.x, top: spot.y, width: spot.w, height: spot.h,
-                                boxShadow: '0 0 0 4px rgba(253,224,71,.8), 0 0 0 10px rgba(253,224,71,.2)'
-                            }}
-                        />
                     </motion.div>
                 )}
             </AnimatePresence>
 
-            {/* Halo extra por si el boton queda justo bajo el sombreado */}
+            {/* 👻 Ghost highlight — rectángulo/halo del objetivo por ENCIMA del overlay */}
+            <AnimatePresence>
+                {ghost && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                        className="fixed pointer-events-none"
+                        style={{
+                            zIndex: Z.GHOST,
+                            left: ghost.x,
+                            top: ghost.y,
+                            width: ghost.w,
+                            height: ghost.h,
+                            borderRadius: ghost.r || '12px',
+                            boxShadow: '0 0 0 4px rgba(253,224,71,.9), 0 0 0 12px rgba(253,224,71,.18)',
+                            background: 'transparent'
+                        }}
+                    />
+                )}
+            </AnimatePresence>
+
+            {/* Halo extra */}
             <AnimatePresence>
                 {halo && (
                     <motion.div
