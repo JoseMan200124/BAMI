@@ -1,8 +1,7 @@
 // src/pages/BamiHub.jsx
-// Cambios:
-// - El botón "Cerrar" del tracker y el backdrop SIEMPRE cierran (sin chequear locks).
-// - Monta SIEMPRE un <CaseTracker active={false}/> oculto para que escuche eventos de simulación
-//   cuando el tracker no está abierto (así el Autopilot puede disparar el avance al final).
+// Vista principal. Ahora escucha 'bami:ui:openOps' para cambiar la vista a "ops"
+// y asegura que el panel quede a la vista. Mantiene un CaseTracker oculto para
+// escuchar simulaciones cuando el tracker no está abierto.
 
 import React, { useEffect, useMemo, useState } from 'react'
 import CaseTracker from '../components/CaseTracker.jsx'
@@ -22,25 +21,32 @@ export default function BamiHub() {
     const [showMobile, setShowMobile] = useState(false)
     const [viewMode, setViewMode] = useState('both') // both | client | ops
 
-    // svh correcto en móviles
+    // svh correcto
     useEffect(() => {
-        const setVH = () =>
-            document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`)
+        const setVH = () => document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`)
         setVH()
         window.addEventListener('resize', setVH)
         return () => window.removeEventListener('resize', setVH)
     }, [])
 
-    // Suscripciones
+    // Suscripciones y eventos globales
     useEffect(() => {
         const onU = (e) => setC(e.detail)
-
         const onTrackerOpen = () => setShowTracker(true)
-        const onTrackerToggle = () => setShowTracker(v => !v)
+        const onTrackerToggle = () => setShowTracker((v) => !v)
         const onTrackerClose = () => setShowTracker(false)
 
         const onFormOpen = () => setShowForm(true)
         const onSimClose = () => setShowMobile(false)
+
+        const onOpenOps = () => {
+            setShowTracker(false)
+            setViewMode('ops')
+            setTimeout(() => {
+                document.querySelector('[data-agent-area="panel-bam-ops"]')
+                    ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+            }, 50)
+        }
 
         const onCloseAll = () => {
             setShowTracker(false)
@@ -62,6 +68,8 @@ export default function BamiHub() {
         window.addEventListener('ui:sim:close', onSimClose)
         window.addEventListener('ui:closeAll', onCloseAll)
 
+        window.addEventListener('bami:ui:openOps', onOpenOps)
+
         return () => {
             window.removeEventListener('bami:caseUpdate', onU)
             window.removeEventListener('ui:tracker:open', onTrackerOpen)
@@ -71,6 +79,7 @@ export default function BamiHub() {
             window.removeEventListener('ui:form:open', onFormOpen)
             window.removeEventListener('ui:sim:close', onSimClose)
             window.removeEventListener('ui:closeAll', onCloseAll)
+            window.removeEventListener('bami:ui:openOps', onOpenOps)
         }
     }, [])
 
@@ -78,7 +87,7 @@ export default function BamiHub() {
     const start = async () => {
         const cc = await createNewCase(product)
         notify('Expediente creado')
-        setC(cc); setShowTracker(false) // no abrir al crear
+        setC(cc); setShowTracker(false)
     }
     const reopen = async () => {
         const prevApplicant = getCase()?.applicant || null
@@ -101,18 +110,14 @@ export default function BamiHub() {
         window.dispatchEvent(new Event(`${p}:advisor`))
     }
 
-    // CTA recomendado
     const nextCTA = useMemo(() => {
         if (!c) return { id: 'create', label: 'Crear expediente', action: () => start() }
-        if ((c.missing || []).length > 0)
-            return { id: 'upload', label: `Subir ${c.missing.length} documento(s)`, action: () => openUploadEverywhere() }
-        if (c.stage !== 'aprobado')
-            return { id: 'validate', label: 'Validar con IA', action: () => validateEverywhere() }
+        if ((c.missing || []).length > 0) return { id: 'upload', label: `Subir ${c.missing.length} documento(s)`, action: () => openUploadEverywhere() }
+        if (c.stage !== 'aprobado') return { id: 'validate', label: 'Validar con IA', action: () => validateEverywhere() }
         return { id: 'advisor', label: 'Hablar con asesor', action: () => advisorEverywhere() }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [c, product, showMobile])
 
-    // Contenido columnas (desktop)
     const DesktopTwoColumns = (
         <div className="grid lg:grid-cols-2 gap-4">
             {/* CLIENTE */}
@@ -361,7 +366,7 @@ export default function BamiHub() {
                 </div>
             )}
 
-            {/* === AGENTE (botón flotante) === */}
+            {/* Botón/Agente */}
             <BamiAgent
                 caseData={c}
                 product={product}
@@ -379,7 +384,7 @@ export default function BamiHub() {
                 }}
             />
 
-            {/* === CaseTracker oculto para escuchar simulaciones cuando el tracker no está abierto === */}
+            {/* CaseTracker oculto (escucha simulaciones) */}
             <div className="hidden" aria-hidden>
                 <CaseTracker active={false} />
             </div>
