@@ -2,16 +2,14 @@
 import React, { useEffect, useMemo, useRef, useState, useLayoutEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createPortal } from 'react-dom'
-import { Bot, Sparkles, MousePointer2, Activity, Play, X as XIcon } from 'lucide-react'
+import { Bot, Sparkles, MousePointer2, Activity, Play, Pause, X as XIcon } from 'lucide-react'
 import { api } from '../lib/apiClient'
 import { getCase } from '../lib/caseStore.js'
 
 /**
  * BAMI Agent — Autopilot con cursor visible, simulación de tracker y portal robusto.
- * - Cursor visible con animaciones suaves.
- * - Feed con pasos ejecutados.
- * - Bloquea chat flotante y cierra overlays no esenciales durante el show.
- * - Simula subida de documentos y lanza avance del tracker (requiere → aprobado).
+ * - Forzamos apertura del tracker (desktop + simulador) y animación suave entre etapas.
+ * - Al finalizar, se inyecta el “lead creado por BAMI” al panel OPS con animaciones.
  */
 
 const EASE = [0.22, 1, 0.36, 1]
@@ -20,6 +18,7 @@ const DUR = {
     preRatio: 0.55,
     settlePause: 380,
     clickHold: 420,
+    ripple: 900,
     halo: 800,
     betweenSteps: 220,
 }
@@ -36,6 +35,7 @@ const wait = (ms) => new Promise(r => setTimeout(r, ms))
 // ---------- Utilidades DOM ----------
 const HUD_ROOT_SELECTOR = '#bami-hud'
 const isInsideHUD = (el) => !!el?.closest?.(HUD_ROOT_SELECTOR)
+
 const isVisible = (el) => {
     if (!el) return false
     if (isInsideHUD(el)) return false
@@ -130,7 +130,7 @@ export default function BamiAgent({ caseData, product, controls }) {
 
     // cursor y efectos
     const [cursor, setCursor] = useState({
-        show: true,
+        show: true, // visible desde el inicio
         x: typeof window !== 'undefined' ? (window.scrollX + 32) : 32,
         y: typeof window !== 'undefined' ? (window.scrollY + 32) : 32,
         clicking: false,
@@ -139,7 +139,7 @@ export default function BamiAgent({ caseData, product, controls }) {
     const [halo, setHalo] = useState(null)
     const [tip, setTip] = useState(null)
 
-    // portal
+    // portal a <body> con estilo/z-index reforzado
     const [portalRoot, setPortalRoot] = useState(null)
     useLayoutEffect(() => {
         let el = document.getElementById('bami-agent-portal')
@@ -172,7 +172,7 @@ export default function BamiAgent({ caseData, product, controls }) {
         return () => mo.disconnect()
     }, [])
 
-    // Watchdog cursor
+    // Watchdog para cursor
     useEffect(() => {
         const safePutOnScreen = () => {
             setCursor(c => {
@@ -209,9 +209,10 @@ export default function BamiAgent({ caseData, product, controls }) {
 
     const insight = useMemo(() => {
         const p = []
-        if (caseData) {
-            p.push(`Caso ${caseData.id?.slice(0,6) || 'nuevo'} · ${caseData.product} · etapa: ${caseData.stage}`)
-            if ((caseData.missing || []).length) p.push(`Faltan ${caseData.missing.length} doc(s)`)
+        const cc = getCase?.() || caseData
+        if (cc) {
+            p.push(`Caso ${cc.id?.slice(0,6) || 'nuevo'} · ${cc.product} · etapa: ${cc.stage}`)
+            if ((cc.missing || []).length) p.push(`Faltan ${cc.missing.length} doc(s)`)
         } else {
             p.push(`Sin caso activo · producto: ${product || '—'}`)
         }
@@ -295,24 +296,24 @@ export default function BamiAgent({ caseData, product, controls }) {
     // Simulación del tracker
     const simulateTracker = (opts={}) => {
         const detail = {
-            caseId: (getCase()?.id || 'demo-' + Date.now()),
+            caseId: (getCase?.()?.id || caseData?.id || 'demo-' + Date.now()),
             timeline: opts.timeline || [
-                { key: 'recibido',  label: 'Documentos recibidos', delayMs: 700 },
-                { key: 'validando', label: 'Validación automática', delayMs: 1200 },
-                { key: 'aprobado',  label: 'Aprobado',              delayMs: 900, final: true }
+                { key: 'recibido',  label: 'Documentos recibidos', delayMs: 1200 },
+                { key: 'validando', label: 'Validación automática', delayMs: 1800 },
+                { key: 'aprobado',  label: 'Aprobado',              delayMs: 1500, final: true }
             ]
         }
         window.dispatchEvent(new CustomEvent('tracker:simulate:start', { detail }))
         window.dispatchEvent(new Event('bami:sim:runTracker'))
     }
 
-    // Ruta principal (resumida)
+    // Secuencia del recorrido
     const ROUTE = [
         {
             type: 'click',
             id: 'simular-app-top',
             say: 'Simulamos la App del cliente.',
-            targets: { selectors: ['btn-simular-top','[data-agent-id="btn-simular-top"]'], texts: ['simular app','simulador'] },
+            targets: { selectors: ['btn-simular-top','[data-agent-id="btn-simular-top"]','.top-actions [data-agent-id="btn-simular-top"]'], texts: ['simular app','simulador'] },
             run: () => controls?.openSimulator?.(),
             success: () => !!document.querySelector('[data-simulator], .simulator-panel'),
             forceSuccessIfRun: true
@@ -321,26 +322,35 @@ export default function BamiAgent({ caseData, product, controls }) {
             type: 'click',
             id: 'crear-expediente',
             say: 'Creamos el expediente.',
-            targets: { selectors: ['btn-crear-expediente','[data-agent-id="btn-crear-expediente"]'], texts: ['crear expediente','nuevo expediente'] },
+            targets: { selectors: ['btn-crear-expediente','[data-agent-id="btn-crear-expediente"]','button#create-expediente'], texts: ['crear expediente','nuevo expediente'] },
             run: () => controls?.start?.(),
             success: () => !!document.querySelector('[data-expediente], .toast-expediente, [data-case-created]'),
-            forceSuccessIfRun: true
+            forceSuccessIfRun: true,
+            after: async () => {
+                // Aseguramos apertura del tracker desde el principio
+                window.dispatchEvent(new Event('ui:tracker:open'))
+                window.dispatchEvent(new Event('sim:tracker:open'))
+                window.dispatchEvent(new Event('bami:agent:openTracker'))
+            }
         },
         {
             type: 'click',
             id: 'subir-documentos',
             say: 'Abrimos el asistente de subida de documentos.',
-            targets: { selectors: ['btn-recomendado','[data-agent-id="btn-recomendado"]'], texts: ['subir documentos','continuar'] },
+            targets: { selectors: ['btn-recomendado','btn-subir-documentos','[data-agent-id="btn-recomendado"]','[data-agent-id="btn-subir-documentos"]'], texts: ['subir documentos','continuar'] },
             run: () => controls?.openUploadEverywhere?.(),
             success: () => !!document.querySelector('[data-upload-portal],[data-dropzone],.upload-modal'),
             forceSuccessIfRun: true,
             after: async () => {
+                // Señales de demo a cualquier uploader/bridge existente
                 window.dispatchEvent(new Event('upload:demo'))
                 window.dispatchEvent(new Event('ui:upload:demo'))
                 window.dispatchEvent(new Event('sim:upload:demo'))
-                // Abre tracker y lanza simulación
+
+                // Abrimos tracker y lanzamos simulación (desktop + simulador)
                 setTimeout(() => {
-                    try { controls?.openTracker?.() } catch {}
+                    window.dispatchEvent(new Event('ui:tracker:open'))
+                    window.dispatchEvent(new Event('sim:tracker:open'))
                     window.dispatchEvent(new Event('bami:agent:openTracker'))
                     simulateTracker()
                 }, 900)
@@ -349,26 +359,49 @@ export default function BamiAgent({ caseData, product, controls }) {
         {
             type: 'click',
             id: 'abrir-tracker',
-            say: 'Abrimos el tracker para ver el estado completo.',
+            say: 'Vemos el tracker y cómo avanza etapa por etapa.',
             targets: { selectors: ['btn-tracker-top','[data-agent-id="btn-tracker-top"]','btn-tracker','[data-agent-id="btn-tracker"]'], texts: ['tracker','abrir tracker'] },
-            run: () => { controls?.openTracker?.(); window.dispatchEvent(new Event('bami:agent:openTracker')); window.dispatchEvent(new Event('bami:sim:runTracker')) },
+            run: () => {
+                controls?.openTracker?.()
+                window.dispatchEvent(new Event('bami:agent:openTracker'))
+                window.dispatchEvent(new Event('bami:sim:runTracker'))
+                // Mantener lock para que no se cierre durante el show
+                window.__BAMI_LOCK_TRACKER__ = true
+            },
             success: () => !!document.querySelector('[data-agent-area="tracker"],[data-tracker-panel],.tracker-panel'),
             forceSuccessIfRun: true
         },
         {
-            type: 'click',
+            type: 'focus',
             id: 'focus-bam-ops',
             say: 'Vista para BAM: panel de análisis y leads.',
+            // No cerramos aquí; dejamos que el tracker termine visible y cerramos al final.
             targets: { selectors: ['[data-agent-area="panel-bam-ops"]','.ops-panel','.analytics-panel'], texts: ['panel de análisis y leads','panel de analisis y leads'] },
-            run: () => {},
-            success: () => !!document.querySelector('[data-agent-area="panel-bam-ops"]'),
-            forceSuccessIfRun: true
+            after: async () => {
+                // Abre OPS dentro del simulador si aplica y muestra ayudas
+                window.dispatchEvent(new Event('sim:ops:open'))
+                window.dispatchEvent(new Event('bami:ops:explain'))
+            }
         },
+        { type: 'speak', id: 'end', say: 'Listo. Flujo presentado de inicio a fin.' }
     ]
 
     const showTipFor = async (el, text, kind) => {
         logLine(text)
         if (el && (kind === 'focus' || kind === 'click')) await showTip(el, text, 1300)
+    }
+
+    const runFocus = async (step) => {
+        step?.before?.()
+        const target = await waitForTarget({ ...(step.targets || {}), kind: 'focus' })
+        if (target) {
+            await moveToEl(target)
+            await showTipFor(target, step.say, 'focus')
+        } else {
+            await showTipFor(null, step.say, 'focus')
+        }
+        await Promise.resolve(step?.after?.())
+        return true
     }
 
     const runClick = async (step) => {
@@ -380,6 +413,8 @@ export default function BamiAgent({ caseData, product, controls }) {
             await clickEffect()
             try { await Promise.resolve(step.run?.()) } catch {}
             await wait(600)
+            if (step.success && step.success()) { await Promise.resolve(step?.after?.()); return true }
+            if (step.forceSuccessIfRun && step.run) { await Promise.resolve(step?.after?.()); return true }
             await Promise.resolve(step?.after?.())
             return true
         }
@@ -390,6 +425,8 @@ export default function BamiAgent({ caseData, product, controls }) {
         return true
     }
 
+    const runSpeak = async (step) => { step?.before?.(); logLine(step.say); await Promise.resolve(step?.after?.()); await wait(700); return true }
+
     const runDemo = async () => {
         if (running) return
         setRunning(true)
@@ -397,38 +434,75 @@ export default function BamiAgent({ caseData, product, controls }) {
 
         // 🔒 Señales globales para UX
         window.__BAMI_AGENT_ACTIVE__ = true
-        window.__BAMI_DISABLE_FLOATING__ = true
-        window.__BAMI_LOCK_TRACKER__ = true
+        window.__BAMI_DISABLE_FLOATING__ = true // desactiva chat flotante
+        window.__BAMI_LOCK_TRACKER__ = true     // evita que se cierre el tracker dentro del simulador
+
+        // Cursor presente desde el inicio
+        try { window.dispatchEvent(new Event('bami:cursor:forceShow')) } catch {}
+
+        // Notificar a trackers para que, si están montados, arranquen
+        window.dispatchEvent(new Event('bami:agent:start'))
 
         try {
             for (const step of ROUTE) {
-                await runClick(step)
+                await runStep(step)
                 await wait(260)
             }
-            logLine('Flujo completado.')
 
-            // 🔔 Al terminar, emitimos evento para que OPS ingiera el lead
-            await wait(900) // dejamos respirar a la última transición del tracker
-            const current = getCase() || {}
-            window.dispatchEvent(new CustomEvent('bami:autopilot:done', { detail: { case: current } }))
+            // Espera a que el tracker termine (si envía señal); damos un margen
+            await new Promise(resolve => {
+                let done = false
+                const h = () => { done = true; window.removeEventListener('bami:tracker:finished', h); resolve() }
+                window.addEventListener('bami:tracker:finished', h)
+                setTimeout(() => { if (!done) resolve() }, 1800)
+            })
+
+            // Inyectar lead “creado por BAMI” en OPS con datos del caso actual
+            const cc = getCase?.() || caseData || {}
+            window.dispatchEvent(new CustomEvent('bami:ops:ingestLead', {
+                detail: {
+                    case: {
+                        id: cc.id || `C-${Math.floor(Math.random()*900000)+100000}`,
+                        product: cc.product || 'Tarjeta de Crédito',
+                        channel: cc.channel || 'web',
+                        applicant: cc.applicant || { name: 'Cliente BAMI' },
+                        stage: 'aprobado'
+                    }
+                }
+            }))
+
+            logLine('Flujo completado.')
         } finally {
             await wait(400)
             setHalo(null); setTip(null)
             setCursor(c => ({ ...c, show: true, clicking: false, transition: { type: 'tween', ease: EASE, duration: 0.8 } }))
 
-            // liberar bloqueos y cerrar overlays secundarios
+            // ⛔ Limpiar bloqueos pero cerrar overlays secundarios
             window.__BAMI_LOCK_TRACKER__ = false
             closeEverything()
             setRunning(false)
 
-            // Retardo corto antes de soltar el flag activo
+            // mantenemos el flag de agente un poco y luego liberamos
             setTimeout(()=>{ window.__BAMI_AGENT_ACTIVE__ = false }, 200)
         }
     }
 
+    const runStep = async (step) => {
+        switch (step.type) {
+            case 'focus': return runFocus(step)
+            case 'click': return runClick(step)
+            case 'speak': return runSpeak(step)
+            default: return true
+        }
+    }
+
+    // Insight inicial (una línea)
+    useEffect(() => { if (insight) logLine(`🔎 ${insight}`) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
     // UI del HUD (botón + feed)
     const hud = (
         <div id="bami-hud" className="fixed right-4 bottom-4 z-[1999980]">
+            {/* Botón flotante */}
             <div className="flex flex-col items-end gap-2 mb-2">
                 <button
                     onClick={() => setOpen(v=>!v)}
@@ -489,6 +563,7 @@ export default function BamiAgent({ caseData, product, controls }) {
                             </div>
                             <div className="mt-2 flex items-center justify-end gap-2">
                                 <button onClick={()=>{ setFeed([]) }} className="text-[11px] px-2 py-1 rounded-md border hover:bg-gray-50">Limpiar</button>
+                                <button onClick={closeEverything} className="text-[11px] px-2 py-1 rounded-md border hover:bg-gray-50">Cerrar overlays</button>
                             </div>
                         </div>
                     </motion.div>
@@ -520,7 +595,7 @@ export default function BamiAgent({ caseData, product, controls }) {
                 </motion.div>
             </div>
 
-            {/* Halo */}
+            {/* Halo de enfoque */}
             <AnimatePresence>
                 {halo && (
                     <motion.div
@@ -536,7 +611,7 @@ export default function BamiAgent({ caseData, product, controls }) {
                 )}
             </AnimatePresence>
 
-            {/* Tip */}
+            {/* Tip flotante */}
             <AnimatePresence>
                 {tip && (
                     <motion.div
@@ -554,6 +629,7 @@ export default function BamiAgent({ caseData, product, controls }) {
         </div>
     )
 
+    // Montaje del portal HUD y cursor
     if (!portalRoot) return null
     return createPortal(hud, portalRoot)
 }

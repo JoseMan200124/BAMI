@@ -1,5 +1,5 @@
 // src/components/CaseTracker.jsx
-// Fuerza avance en modo agente, llena línea de tiempo y coopera con el orquestador — ahora más lento y smooth.
+// Fuerza avance en modo agente, anima suave la línea de tiempo, y coopera con el orquestador.
 
 import React, { useEffect, useRef, useState } from 'react'
 import { getCase, refreshTracker } from '../lib/caseStore.js'
@@ -72,15 +72,17 @@ export default function CaseTracker({ active = true }) {
                 timeline: [...(now.timeline || []), entry],
             }
             window.dispatchEvent(new CustomEvent('bami:caseUpdate', { detail: next }))
+            // Señal útil para OPS o HUD
+            window.dispatchEvent(new CustomEvent('bami:tracker:stageChange', { detail: entry }))
         } catch {}
     }
 
-    // ⏱️ Secuencia más lenta para que se note el paso entre etapas
+    // ⏱️ Secuencia más lenta y suave
     const stagesSequence = [
-        { stage: 'requiere',    percent: 10,  delay: 1800, missing: ['dpi', 'selfie', 'comprobante_domicilio'], log: 'Expediente iniciado.' },
-        { stage: 'recibido',    percent: 35,  delay: 2200, missing: ['selfie', 'comprobante_domicilio'],       log: 'Recepción confirmada.' },
-        { stage: 'en_revision', percent: 70,  delay: 2600, missing: [],                                        log: 'En revisión operativa.' },
-        { stage: 'aprobado',    percent: 100, delay: 2000, missing: [],                                        log: 'Autorizado.' },
+        { stage: 'requiere',    percent: 10,  delay: 1400, missing: ['dpi', 'selfie', 'comprobante_domicilio'], log: 'Expediente iniciado.' },
+        { stage: 'recibido',    percent: 35,  delay: 1900, missing: ['selfie', 'comprobante_domicilio'],        log: 'Recepción confirmada.' },
+        { stage: 'en_revision', percent: 70,  delay: 2400, missing: [],                                         log: 'Análisis con IA y analista.' },
+        { stage: 'aprobado',    percent: 100, delay: 1800, missing: [],                                         log: 'Autorizado.' },
     ]
 
     const runDemoFrom = (startStage) => {
@@ -96,7 +98,12 @@ export default function CaseTracker({ active = true }) {
 
         let i = 1
         const next = () => {
-            if (i >= steps.length) { setSim((s) => ({ ...s, on: false })); return }
+            if (i >= steps.length) {
+                setSim((s) => ({ ...s, on: false }))
+                // Señal para que el OPS ingeste el lead final cuando el flujo concluye
+                try { window.dispatchEvent(new Event('bami:tracker:finished')) } catch {}
+                return
+            }
             setSim((s) => ({ ...s, ...steps[i] }))
             pushToStore(steps[i])
             timerRef.current = window.setTimeout(next, steps[i].delay)
@@ -105,13 +112,20 @@ export default function CaseTracker({ active = true }) {
         timerRef.current = window.setTimeout(next, steps[0].delay)
     }
 
-    // Arranque de demo cuando el orquestador la pida (NO cerramos overlays aquí)
+    // Arranque de demo cuando el orquestador la pida
     useEffect(() => {
         const start = () => {
+            // abre el tracker robustamente tanto en desktop como en simulador
+            try {
+                window.dispatchEvent(new Event('ui:tracker:open'))
+                window.dispatchEvent(new Event('sim:tracker:open'))
+            } catch {}
+
             const current = (getCase() || {}).stage || 'requiere'
             const p = (getCase() || {}).percent || 0
             if (current === 'requiere' && p <= 10) runDemoFrom('requiere')
             else runDemoFrom(current)
+
             try { window.dispatchEvent(new Event('bami:cursor:forceShow')) } catch {}
         }
         const stop = () => { clearTimeout(timerRef.current); setSim((s) => ({ ...s, on: false })) }
@@ -141,6 +155,7 @@ export default function CaseTracker({ active = true }) {
     // ▶️ Soporte directo a simulación del agente (Recibido → En revisión → Aprobado)
     useEffect(() => {
         const onSim = () => {
+            // Asegura que el tracker avance desde recibido si veníamos en 10%
             const cur = getCase() || {}
             const startStage = (cur.stage === 'requiere' && (cur.percent || 0) <= 10) ? 'recibido' : cur.stage
             runDemoFrom(startStage || 'recibido')
@@ -149,7 +164,7 @@ export default function CaseTracker({ active = true }) {
         return () => window.removeEventListener('tracker:simulate:start', onSim)
     }, [])
 
-    // Watchdog: si el agente está activo y el tracker se queda en 10% > 3s, relanza demo
+    // Watchdog: si el agente está activo y el tracker se queda en 10% > 3.5s, relanza demo
     useEffect(() => {
         clearInterval(watchdogRef.current)
         watchdogRef.current = window.setInterval(() => {
@@ -160,7 +175,7 @@ export default function CaseTracker({ active = true }) {
             const openTxt = (document.querySelector('[data-agent-area="tracker"], [role="dialog"], [data-modal], .modal, .DialogContent')?.innerText || '').toLowerCase()
             const trackerOpen = openTxt.includes('seguimiento del expediente')
             const elapsed = Date.now() - (startTsRef.current || 0)
-            if (trackerOpen && (stage === 'requiere' && pct <= 10) && elapsed > 3000) {
+            if (trackerOpen && (stage === 'requiere' && pct <= 10) && elapsed > 3500) {
                 runDemoFrom('recibido')
             }
         }, 800)
@@ -187,7 +202,7 @@ export default function CaseTracker({ active = true }) {
     const ap = c.applicant
 
     return (
-        <div className="card">
+        <div className="card" data-agent-area="tracker">
             <div className="flex items-start justify-between gap-3 sm:gap-4">
                 <div className="min-w-0">
                     <div className="text-xs text-gray-500">Expediente</div>
@@ -199,6 +214,7 @@ export default function CaseTracker({ active = true }) {
                     </div>
                 </div>
                 <div className="shrink-0">
+                    {/* ProgressRing ahora anima stroke-dasharray de forma suave */}
                     <ProgressRing value={percent} label={`${percent}%`} />
                 </div>
             </div>

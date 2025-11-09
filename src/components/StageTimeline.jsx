@@ -10,9 +10,10 @@ export const STAGES = [
     { key: 'alternativa', label: 'Alternativa', icon: GitBranch,    hint: 'Te proponemos otra opción' },
 ]
 
+const EASE = 'cubic-bezier(0.22,1,0.36,1)'
+
 export default function StageTimeline({ stage = 'requiere', history = [], timeline = [] }) {
     const idx = STAGES.findIndex((s) => s.key === stage)
-
     // Compatibilidad: soporta {at,stage,note} y también {ts,type,text}
     const items = (timeline && timeline.length
         ? timeline.map(t => ({
@@ -21,21 +22,19 @@ export default function StageTimeline({ stage = 'requiere', history = [], timeli
             note: t.note ?? t.text ?? ''
         }))
         : (history || []))
-
     const widthPct = Math.max(0, idx) / (STAGES.length - 1) * 100
 
     return (
         <div className="w-full">
             <div className="relative">
                 <div className="absolute left-0 right-0 top-6 h-1 bg-gray-200 rounded-full"></div>
-
-                {/* Barra de progreso con transición más lenta y suave */}
                 <div
                     className="absolute left-0 top-6 h-1 bg-bami-yellow rounded-full"
                     style={{
                         width: `${widthPct}%`,
-                        transition: 'width 2.1s cubic-bezier(0.22,1,0.36,1)'
+                        transition: `width 1200ms ${EASE}`
                     }}
+                    aria-hidden
                 />
 
                 {/* Mobile: lista horizontal desplazable */}
@@ -46,21 +45,25 @@ export default function StageTimeline({ stage = 'requiere', history = [], timeli
                             const isActive = i === idx
                             const isDone = i < idx && stage !== 'alternativa'
                             const isAlt = stage === 'alternativa' && s.key === 'alternativa'
+                            const ring =
+                                isActive ? 'bg-yellow-50 border-bami-yellow' :
+                                    isDone   ? 'bg-emerald-50 border-emerald-300' :
+                                        isAlt    ? 'bg-blue-50 border-blue-300' : ''
+
                             return (
                                 <div key={s.key} className="flex flex-col items-center w-16 sm:w-auto">
                                     <div
                                         className={[
                                             'w-10 h-10 grid place-items-center rounded-full border text-gray-700 shrink-0',
-                                            isActive ? 'bg-yellow-50 border-bami-yellow' : '',
-                                            isDone ? 'bg-emerald-50 border-emerald-300' : '',
-                                            isAlt ? 'bg-blue-50 border-blue-300' : '',
+                                            ring
                                         ].join(' ')}
                                         title={s.hint}
-                                        // Suaviza cambio de fondo/borde y da un leve "pop" cuando es activo
                                         style={{
-                                            transition: 'transform 900ms cubic-bezier(0.22,1,0.36,1), background-color 600ms ease, border-color 600ms ease',
-                                            transform: isActive ? 'scale(1.06)' : 'scale(1.00)'
+                                            transform: isActive ? 'scale(1.06)' : (isDone ? 'scale(1.02)' : 'scale(1)'),
+                                            transition: `transform 460ms ${EASE}, background-color 200ms ease, border-color 200ms ease`
                                         }}
+                                        aria-current={isActive ? 'step' : undefined}
+                                        aria-label={`${s.label}${isActive ? ' (actual)' : ''}`}
                                     >
                                         <Icon size={18} />
                                     </div>
@@ -76,10 +79,10 @@ export default function StageTimeline({ stage = 'requiere', history = [], timeli
                 <div className="flex items-center gap-2 font-medium">
                     <Clock size={14} /> Línea de tiempo
                 </div>
-                <ul className="mt-2 max-h-36 sm:max-h-44 overflow-auto pr-1">
+                <ul className="mt-2 max-h-36 sm:max-h-44 overflow-auto pr-1" aria-live="polite">
                     {items?.slice().reverse().map((h, i) => (
                         <li key={i} className="py-1 border-t first:border-t-0">
-                            {new Date(h.at).toLocaleString()} · <span className="font-semibold">{h.stage}</span>{' '}
+                            {new Date(h.at).toLocaleString()} · <span className="font-semibold capitalize">{String(h.stage).replace('_',' ')}</span>{' '}
                             {h.note ? `· ${h.note}` : ''}
                         </li>
                     ))}
