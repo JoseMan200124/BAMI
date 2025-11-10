@@ -132,7 +132,7 @@ export default function BamiChatWidget({
     const greetedOnce = useRef(false)
     const [bodyPad, setBodyPad] = useState(88)
 
-    // === Estabilizador de layout: estilos locales ===
+    // === Estabilizador de layout ===
     const StableStyles = (
         <style
             dangerouslySetInnerHTML={{
@@ -174,7 +174,6 @@ export default function BamiChatWidget({
     const push=(role,text)=>setMessages(m=>[...m,{id:Date.now()+Math.random(),role,text}])
     const pushRich=(payload)=>setMessages(m=>[...m,{id:Date.now()+Math.random(),role:'bami',type:'rich',payload}])
 
-    // Scroll sin smooth
     const scrollBottom=()=>{ requestAnimationFrame(()=>{ listRef.current?.scrollTo({ top:listRef.current.scrollHeight, behavior:'auto' }) }) }
     useEffect(scrollBottom,[messages,typing])
 
@@ -183,12 +182,16 @@ export default function BamiChatWidget({
     // Suscripciones (compatibles con embed) — SIN 'upload:open' global
     useEffect(()=>{
         const openChat = ()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true) }
-        const openUpload = ()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) { setShowUpload(true); return } ; setOpen(true); setShowUpload(true); push('bami','Abrí el asistente de subida de documentos.') }
+        const openUpload = ()=>{ // SIEMPRE mostrar dentro del contenedor actual
+            setOpen(true)
+            setShowUpload(true)
+            push('bami','Abrí el asistente de subida de documentos.')
+        }
         const runValidate = async()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) { return } ; setOpen(true); await validateAI(true) }
         const callAdvisor = ()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true); connectAdvisor() }
         const pushMsg = (e)=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true); push(e.detail?.role||'bami', e.detail?.text||'') }
 
-        const prefixes = embed ? ['sim'] : ['ui','bami']
+        const prefixes = embed ? ['sim'] : ['ui','bami','sim'] // añadimos 'sim' también para el chat desktop cuando el sim está abierto
         const allEvents = [
             ['open', openChat],
             ['upload', openUpload],
@@ -259,7 +262,6 @@ export default function BamiChatWidget({
         if (detectedProduct && (!action || action === 'product_info')) return newCase(detectedProduct)
 
         if (action === 'create_case' && !detectedProduct) {
-            // Inicio de flujo cliente: garantizamos visibilidad
             window.dispatchEvent(new Event('bami:clientflow:start'))
             window.dispatchEvent(new Event('bami:clientflow:ensureClientVisible'))
             push('bami','Perfecto, ¿para qué producto deseas aplicar?')
@@ -603,7 +605,6 @@ export default function BamiChatWidget({
                 : (variant==='fullscreen' ? { height: baseH_full, minHeight: 420 }
                     : (variant==='panel' ? { height: 520 } : { height: 520 })))
 
-    // ⚠️ 'relative' + contención para estabilidad
     const ChatWindow=(
         <div
             className="bami-stable relative min-h-0 flex flex-col h-full w-full"
@@ -625,6 +626,7 @@ export default function BamiChatWidget({
     if(variant==='fullscreen' || variant==='app'){
         return (<>
             <div className="rounded-none sm:rounded-none overflow-hidden h-full">{ChatWindow}</div>
+            {/* IMPORTANTE: context='phone' cuando embed=true para que el modal renderice DENTRO del simulador */}
             <UploadAssistant open={showUpload} onClose={()=>setShowUpload(false)} onUploaded={afterUpload} context={embed?'phone':'overlay'}/>
         </>)
     }

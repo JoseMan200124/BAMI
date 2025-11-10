@@ -260,11 +260,15 @@ export default function BamiAgent({ caseData, product, controls }) {
             targets: { selectors: ['btn-recomendado','[data-agent-id="btn-recomendado"]','[data-agent-id="btn-subir-documentos"]'], texts: ['subir documentos','continuar'] },
             run: () => controls?.openUploadEverywhere?.(),
             after: async () => {
-                // demo de subida en cualquier uploader
-                window.dispatchEvent(new Event('upload:demo'))
-                window.dispatchEvent(new Event('ui:upload:demo'))
+                // ✅ Corrección: si el simulador está abierto, asegurar upload DENTRO del simulador
+                // Cierra cualquier upload de escritorio, abre en simulador y ejecuta la demo allí.
+                window.dispatchEvent(new Event('ui:upload:close'))
+                window.dispatchEvent(new Event('upload:close'))
+                window.dispatchEvent(new Event('sim:open'))
+                await wait(120)
+                window.dispatchEvent(new Event('sim:upload'))
                 window.dispatchEvent(new Event('sim:upload:demo'))
-                // mantener tracker visible
+                // mantener tracker visible en UI principal sin abrir overlays del simulador
                 setTimeout(() => window.dispatchEvent(new Event('ui:tracker:open')), 900)
             }
         },
@@ -312,7 +316,7 @@ export default function BamiAgent({ caseData, product, controls }) {
             await Promise.resolve(controls?.start?.())
             await wait(600)
 
-            // Abre asistente de subida + demo de arrastre/envío
+            // Abre asistente de subida + demo de arrastre/envío (en escritorio en este 2º acto)
             window.dispatchEvent(new Event('ui:upload'))
             window.dispatchEvent(new Event('upload:demo'))
             await wait(1600)
@@ -368,7 +372,12 @@ export default function BamiAgent({ caseData, product, controls }) {
                         stage: cc.stage || 'aprobado'
                     }}}))
 
-            // 🔓 Antes de pasar al flujo “cliente”, liberamos banderas
+            // ✅ Cerrar simulador y sus modales ANTES de pasar al flujo "cliente"
+            closeEverything()                 // cierra ui+sim overlays
+            controls?.closeSimulator?.()      // redundante por si el simulador controla su estado
+            await wait(400)
+
+            // 🔓 Liberar banderas para permitir UI normal de escritorio
             window.__BAMI_LOCK_TRACKER__ = false
             window.__BAMI_SUPPRESS_SIM_TRACKER__ = false
             window.__BAMI_AGENT_ACTIVE__ = false
