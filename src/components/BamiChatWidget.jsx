@@ -54,17 +54,35 @@ function parseIntent(text){
 }
 
 /** — Burbujas ricas — **/
+// Avatar + "nube" arriba del avatar (más grande)
 function BamiHeaderMini(){
     return (
-        <div className="flex items-center gap-1 mb-1 text-[10px] sm:text-[11px] text-gray-500">
-            <img src="/BAMI.svg" alt="BAMI" className="w-3.5 h-3.5 rounded-full ring-1 ring-yellow-300" />
-            <span className="font-medium">BAMI</span>
+        <div className="relative flex items-center gap-2 mb-2">
+            <div className="relative shrink-0">
+                {/* Avatar más grande */}
+                <img
+                    src="/BAMI.svg"
+                    alt="BAMI"
+                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full ring-2 ring-yellow-300 shadow-sm"
+                />
+                {/* Nube tipo etiqueta sobre el avatar */}
+                <span
+                    className="absolute -top-2 left-1.5 bg-white text-[10px] sm:text-[11px] font-semibold text-gray-700 px-2 py-0.5 rounded-full border shadow-sm select-none"
+                >
+                    BAMI
+                </span>
+                {/* Colita de la nube */}
+                <span
+                    aria-hidden
+                    className="absolute -top-[2px] left-5 w-2 h-2 bg-white rotate-45 border-l border-t"
+                />
+            </div>
         </div>
     )
 }
 function RichBubble({ children }){
     return (
-        <div className="max-w-[85%] rounded-2xl px-3 py-2 text-[13px] sm:text-sm leading-5 bg-gray-100">
+        <div className="max-w-[85%] rounded-2xl px-3 pt-4 pb-2 text-[13px] sm:text-sm leading-5 bg-gray-100">
             <BamiHeaderMini/>
             {children}
         </div>
@@ -86,8 +104,8 @@ function Chips({ items, onAction, asButtons=false }){
                     </button>
                 ) : (
                     <span key={idx} className="px-2 py-1 text-xs rounded-full border bg-white whitespace-nowrap">
-            {label}
-          </span>
+                        {label}
+                    </span>
                 )
             ))}
         </div>
