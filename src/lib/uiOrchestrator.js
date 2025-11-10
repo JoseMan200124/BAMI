@@ -1,11 +1,6 @@
 // src/lib/uiOrchestrator.js
 // Orquestador del Agente SIN cursor circular y SIN ocultar el cursor nativo.
-// - Se eliminó el círculo celeste por completo.
-// - Nunca se oculta el cursor real del sistema.
-// - El Tracker se abre durante el flujo (si aplica) y se CIERRA al finalizar,
-//   evitando que se reabra automáticamente (se desactiva el lock antes de cerrarlo).
-// - Al FINAL del Autopilot, se lanza un mini flujo “como cliente” en escritorio:
-//   abre el chat, muestra un mensaje guía y deja listo para continuar.
+// Además: al iniciar demo cerramos “la ventanita” (chat/overlays) vía ui:close.
 
 (function () {
     if (window.__BAMI_UI_ORCH_READY__) return
@@ -54,7 +49,6 @@
         return null
     }
 
-    // (sin cursor visual) timing helpers
     async function moveCursorTo(_x, _y, duration = 200) { await sleep(duration) }
     async function clickAt(x, y, targetEl = null) {
         await moveCursorTo(x, y, 160)
@@ -69,7 +63,6 @@
         } catch {}
     }
 
-    // Cierre de overlays que estorban (excluye el tracker)
     function closeFloatersExceptTracker() {
         const tracker = findTrackerContainer()
         const floats = Array.from(
@@ -93,7 +86,6 @@
         }
     }
 
-    // Tracker lock
     let trackerLock = false
     let trackerObserver = null
 
@@ -170,6 +162,15 @@
     async function runAgentScenario() {
         window.__BAMI_AGENT_ACTIVE__ = true
 
+        // 🔒 Cerrar “ventanitas” (chat flotante / uploads / overlays) al iniciar demo
+        try {
+            window.dispatchEvent(new Event('ui:close'))
+            window.dispatchEvent(new Event('ui:upload:close'))
+            window.dispatchEvent(new Event('upload:close'))
+            window.dispatchEvent(new Event('sim:upload:close'))
+        } catch {}
+        closeFloatersExceptTracker()
+
         // 1) Abrir tracker y fijarlo durante el flujo (si existe)
         await openTracker(true)
         setTrackerLock(true)
@@ -180,7 +181,7 @@
             await sleep(240)
         }
 
-        // 3) Simulación de subida de documentos (opcional si hay botón)
+        // 3) Simulación de subida de documentos (si hay botón)
         const uploadBtn =
             document.querySelector('[data-bami-upload-sim]') ||
             findByText(['subir documentos (sim)', 'subir documentos', 'simular subida'])
@@ -191,20 +192,17 @@
             try { window.dispatchEvent(new Event('bami:sim:runTracker')) } catch {}
         }
 
-        // 4) FIN del flujo: desactivar lock y CERRAR tracker (no debe quedar abierto).
+        // 4) FIN del flujo: desactivar lock y CERRAR tracker
         setTrackerLock(false)
         await closeTracker()
 
-        // 5) Arrancar mini flujo de CLIENTE en escritorio:
-        //    - Marcamos fin del autopilot ANTES de emitir eventos, para que el chat los acepte.
+        // 5) Arrancar mini flujo de CLIENTE en escritorio
         window.__BAMI_AGENT_ACTIVE__ = false
         try {
-            // Enfocar área cliente en la UI
             window.dispatchEvent(new Event('bami:clientflow:ensureClientVisible'))
             window.dispatchEvent(new Event('bami:clientflow:start'))
-            // Abrir chat y dejar un mensaje guía
             window.dispatchEvent(new Event('ui:open'))
-            window.dispatchEvent(new CustomEvent('ui:msg', { detail: { role: 'bami', text: '✅ Autopilot finalizado. Ahora probemos juntos el flujo como cliente. Puedes escribir “tarjeta de crédito”, “subir documentos” o “tracker”.' }}))
+            window.dispatchEvent(new CustomEvent('ui:msg', { detail: { role: 'bami', text: '✅ Autopilot finalizado. Ahora probemos juntos el flujo como cliente. Escribe “tarjeta de crédito”, “subir documentos” o “tracker”.' }}))
         } catch {}
     }
 

@@ -179,14 +179,11 @@ export default function BamiChatWidget({
 
     useEffect(()=>{ const onU=(e)=>setC(e.detail); window.addEventListener('bami:caseUpdate',onU); return ()=>window.removeEventListener('bami:caseUpdate',onU) },[])
 
-    // Suscripciones (compatibles con embed) — SIN 'upload:open' global
+    // Suscripciones (compatibles con embed) — añadió soporte a ui:close
     useEffect(()=>{
         const openChat = ()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true) }
-        const openUpload = ()=>{ // SIEMPRE mostrar dentro del contenedor actual
-            setOpen(true)
-            setShowUpload(true)
-            push('bami','Abrí el asistente de subida de documentos.')
-        }
+        const closeChat = ()=>{ setOpen(false); setShowUpload(false) }
+        const openUpload = ()=>{ setOpen(true); setShowUpload(true); push('bami','Abrí el asistente de subida de documentos.') }
         const runValidate = async()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) { return } ; setOpen(true); await validateAI(true) }
         const callAdvisor = ()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true); connectAdvisor() }
         const pushMsg = (e)=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true); push(e.detail?.role||'bami', e.detail?.text||'') }
@@ -194,6 +191,7 @@ export default function BamiChatWidget({
         const prefixes = embed ? ['sim'] : ['ui','bami','sim']
         const allEvents = [
             ['open', openChat],
+            ['close', closeChat],
             ['upload', openUpload],
             ['validate', runValidate],
             ['advisor', callAdvisor],
@@ -476,39 +474,65 @@ export default function BamiChatWidget({
         )
     }
 
+    // === Header responsive (mejorado) ===
+    const ControlStrip = ({ compact = false }) => (
+        <div className={`flex items-center ${compact ? 'gap-1.5' : 'gap-2'}`}>
+            <HeaderTab id="bami" icon={Bot}>BAMI</HeaderTab>
+            <HeaderTab id="ai" icon={Sparkles}>IA</HeaderTab>
+            <HeaderTab id="advisor" icon={Headphones}>Asesor</HeaderTab>
+
+            {/* Tracker: icon-only en móvil */}
+            <button
+                className={`ml-0.5 border rounded-md ${compact ? 'px-2 py-1' : 'px-2.5 py-1.5'} inline-flex items-center gap-1`}
+                onClick={()=>window.dispatchEvent(ev('tracker:toggle'))}
+                title="Tracker"
+                aria-label="Abrir tracker"
+            >
+                <BarChart2 size={14}/><span className="hidden sm:inline">Tracker</span>
+            </button>
+
+            {/* Canal sólo en ≥ sm */}
+            {allowOpsButton && (
+                <button className="hidden sm:inline-flex border rounded-md px-2.5 py-1.5 items-center gap-1"
+                        onClick={()=>window.dispatchEvent(ev('ops:toggle'))} title="Panel Ops" aria-label="Abrir panel de análisis">
+                    <LayoutDashboard size={14}/> <span className="hidden sm:inline">Ops</span>
+                </button>
+            )}
+
+            <select className="hidden sm:block ml-2 border rounded-md px-2 py-1"
+                    defaultValue={localStorage.getItem('bami_channel') || 'web'}
+                    onChange={(e)=>changeChannel(e.target.value)} aria-label="Canal">
+                <option value="web">Web</option>
+                <option value="app">App</option>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="sucursal">Sucursal</option>
+                <option value="callcenter">Call Center</option>
+            </select>
+        </div>
+    )
+
     const ChatHeader=(
         <div className="flex flex-col">
-            <div className="flex items-center justify-between px-2.5 sm:px-3 py-2 bg-bami-yellow/60">
-                <div className="flex items-center gap-2 min-w-0">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                    <div className="font-semibold text-sm sm:text-base truncate">Acompañamiento</div>
+            {/* Fila principal: título + controles (ocultos en móvil) */}
+            <div className="px-2.5 sm:px-3 py-2 bg-bami-yellow/60">
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                        <div className="font-semibold text-sm sm:text-base truncate">Acompañamiento</div>
+                    </div>
+                    <div className="hidden sm:flex items-center gap-2">
+                        <ControlStrip />
+                    </div>
                 </div>
-                <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs">
-                    <HeaderTab id="bami" icon={Bot}>BAMI</HeaderTab>
-                    <HeaderTab id="ai" icon={Sparkles}>IA</HeaderTab>
-                    <HeaderTab id="advisor" icon={Headphones}>Asesor</HeaderTab>
-                    <button className="ml-0.5 sm:ml-2 border rounded-md px-2 py-1 inline-flex items-center gap-1"
-                            onClick={()=>window.dispatchEvent(ev('tracker:toggle'))} title="Tracker" aria-label="Abrir tracker">
-                        <BarChart2 size={14}/> Tracker
-                    </button>
-                    {!allowOpsButton && null}
-                    {allowOpsButton && (
-                        <button className="border rounded-md px-2 py-1 inline-flex items-center gap-1"
-                                onClick={()=>window.dispatchEvent(ev('ops:toggle'))} title="Panel Ops" aria-label="Abrir panel de análisis">
-                            <LayoutDashboard size={14}/> Ops
-                        </button>
-                    )}
-                    <select className="hidden sm:block ml-2 border rounded-md px-2 py-1"
-                            defaultValue={localStorage.getItem('bami_channel') || 'web'}
-                            onChange={(e)=>changeChannel(e.target.value)} aria-label="Canal">
-                        <option value="web">Web</option>
-                        <option value="app">App</option>
-                        <option value="whatsapp">WhatsApp</option>
-                        <option value="sucursal">Sucursal</option>
-                        <option value="callcenter">Call Center</option>
-                    </select>
+
+                {/* Tira scrolleable en móvil (evita “amontonado”) */}
+                <div className="sm:hidden mt-1 overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+                    <div className="flex items-center gap-1.5 min-w-max pr-1">
+                        <ControlStrip compact />
+                    </div>
                 </div>
             </div>
+
             <MiniTrackerBar/>
         </div>
     )
