@@ -9,17 +9,26 @@ const EASE = 'cubic-bezier(0.22,1,0.36,1)'
 
 function Card({ title, value, hint, children, className = '', explain }) {
     return (
-        <div className={`p-4 rounded-2xl border bg-white ${className}`}>
-            <div className="flex items-center justify-between">
-                <div className="text-xs text-gray-500">{title}</div>
+        <div className={`p-4 rounded-2xl border bg-white ${className} flex flex-col min-w-0`}>
+            <div className="flex items-center justify-between gap-2 min-w-0">
+                <div className="text-xs text-gray-500 truncate" title={title}>{title}</div>
                 {explain && (
-                    <span className="inline-flex items-center gap-1 text-[11px] text-gray-500" title={explain}>
+                    <span
+                        className="inline-flex items-center gap-1 text-[11px] text-gray-500 shrink-0"
+                        title={explain}
+                    >
             <Info size={14} /> Ayuda
           </span>
                 )}
             </div>
-            <div className="mt-1 text-2xl font-bold leading-tight">{value}</div>
-            {hint && <div className="text-xs text-gray-500 mt-1">{hint}</div>}
+            <div className="mt-1 text-2xl font-bold leading-tight whitespace-nowrap tabular-nums overflow-hidden text-ellipsis">
+                {value}
+            </div>
+            {hint && (
+                <div className="text-xs text-gray-500 mt-1 truncate" title={typeof hint === 'string' ? hint : undefined}>
+                    {hint}
+                </div>
+            )}
             {children}
         </div>
     )
@@ -60,12 +69,17 @@ function StackedBar({ segments }) {
                     })}
                 </div>
             </div>
+
+            {/* Leyenda compacta con corte seguro */}
             <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-3 gap-y-1">
                 {segments.map((s) => (
-                    <div key={s.key} className="flex items-center gap-2 text-[11px] text-gray-600">
-                        <span className="inline-block w-3 h-3 rounded-sm border" style={{ backgroundColor: s.color, borderColor: '#e5e7eb' }} />
-                        <span className="truncate">{s.label}</span>
-                        <span className="ml-auto tabular-nums">{s.value}</span>
+                    <div key={s.key} className="flex items-center gap-2 text-[11px] text-gray-600 min-w-0">
+            <span
+                className="inline-block w-3 h-3 rounded-sm border shrink-0"
+                style={{ backgroundColor: s.color, borderColor: '#e5e7eb' }}
+            />
+                        <span className="truncate flex-1" title={s.label}>{s.label}</span>
+                        <span className="ml-2 tabular-nums shrink-0">{s.value}</span>
                     </div>
                 ))}
             </div>
@@ -173,13 +187,21 @@ function buildDemoData() {
     }
 }
 
-/** ====== NUEVO: Tarjeta compacta y legible para distribuciones ====== **/
+/** ====== Tarjeta compacta/legible para distribuciones ====== **/
 function StatTile({ label, value, hint }) {
     return (
-        <div className="p-4 rounded-2xl border bg-white shadow-sm min-h-[128px] flex flex-col justify-between">
-            <div className="text-sm font-medium text-gray-700 leading-5 break-words">{label}</div>
-            <div className="mt-1 text-3xl font-extrabold tabular-nums tracking-tight">{value}</div>
-            {hint && <div className="mt-1 text-[12px] leading-5 text-gray-500 break-words">{hint}</div>}
+        <div className="p-4 rounded-2xl border bg-white shadow-sm min-h-[128px] flex flex-col justify-between min-w-0">
+            <div className="text-sm font-medium text-gray-700 leading-5 break-words truncate" title={label}>
+                {label}
+            </div>
+            <div className="mt-1 text-3xl font-extrabold tabular-nums tracking-tight whitespace-nowrap overflow-hidden text-ellipsis">
+                {value}
+            </div>
+            {hint && (
+                <div className="mt-1 text-[12px] leading-5 text-gray-500 break-words truncate" title={hint}>
+                    {hint}
+                </div>
+            )}
         </div>
     )
 }
@@ -320,7 +342,9 @@ export default function BamOpsPanel() {
                             explain="Tiempo promedio desde que el cliente inicia contacto hasta que recibe su primera atención."
                             className="min-h-[132px]"
                         >
-                            <div className="text-[11px] text-gray-500 mt-2">P90: {fmtMinutesToHM(p90)} · P95: {fmtMinutesToHM(p95)}</div>
+                            <div className="text-[11px] text-gray-500 mt-2 whitespace-nowrap">
+                                P90: {fmtMinutesToHM(p90)} · P95: {fmtMinutesToHM(p95)}
+                            </div>
                         </Card>
                     </div>
 
@@ -330,9 +354,9 @@ export default function BamOpsPanel() {
                                 <ProgressRing size={64} stroke={8} value={atendidosPct} label={`${atendidosPct}%`} />
                             </div>
                             <div className="min-w-0">
-                                <div className="text-xs text-gray-500 flex items-center justify-between">
-                                    <span>% Atendidos vs Generados</span>
-                                    <CheckCircle2 size={16} className="text-gray-400" />
+                                <div className="text-xs text-gray-500 flex items-center justify-between gap-2">
+                                    <span className="truncate" title="% Atendidos vs Generados">% Atendidos vs Generados</span>
+                                    <CheckCircle2 size={16} className="text-gray-400 shrink-0" />
                                 </div>
                                 <div className="text-sm font-semibold mt-1 truncate">
                                     {atendidos}/{totalLeads} atendidos
@@ -344,9 +368,11 @@ export default function BamOpsPanel() {
 
                     <div className="min-w-[260px]">
                         <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col">
-                            <div className="flex items-center justify-between">
-                                <div className="text-xs text-gray-500">Distribución por etapa</div>
-                                <BarChart3 size={16} className="text-gray-400" />
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="text-xs text-gray-500 truncate" title="Distribución por etapa">
+                                    Distribución por etapa
+                                </div>
+                                <BarChart3 size={16} className="text-gray-400 shrink-0" />
                             </div>
                             <div className="mt-2">
                                 <StackedBar segments={stageSegments} />
@@ -381,7 +407,9 @@ export default function BamOpsPanel() {
                         explain="Tiempo promedio desde que el cliente inicia contacto hasta que recibe su primera atención."
                         className="min-h-[132px]"
                     >
-                        <div className="text-[11px] text-gray-500 mt-2">P90: {fmtMinutesToHM(p90)} · P95: {fmtMinutesToHM(p95)}</div>
+                        <div className="text-[11px] text-gray-500 mt-2 whitespace-nowrap">
+                            P90: {fmtMinutesToHM(p90)} · P95: {fmtMinutesToHM(p95)}
+                        </div>
                     </Card>
 
                     <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex items-center gap-3">
@@ -389,9 +417,9 @@ export default function BamOpsPanel() {
                             <ProgressRing size={64} stroke={8} value={atendidosPct} label={`${atendidosPct}%`} />
                         </div>
                         <div className="min-w-0">
-                            <div className="text-xs text-gray-500 flex items-center justify-between">
-                                <span>% Atendidos vs Generados</span>
-                                <CheckCircle2 size={16} className="text-gray-400" />
+                            <div className="text-xs text-gray-500 flex items-center justify-between gap-2">
+                                <span className="truncate" title="% Atendidos vs Generados">% Atendidos vs Generados</span>
+                                <CheckCircle2 size={16} className="text-gray-400 shrink-0" />
                             </div>
                             <div className="text-sm font-semibold mt-1 truncate">
                                 {atendidos}/{totalLeads} atendidos
@@ -401,9 +429,11 @@ export default function BamOpsPanel() {
                     </div>
 
                     <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col">
-                        <div className="flex items-center justify-between">
-                            <div className="text-xs text-gray-500">Distribución por etapa</div>
-                            <BarChart3 size={16} className="text-gray-400" />
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="text-xs text-gray-500 truncate" title="Distribución por etapa">
+                                Distribución por etapa
+                            </div>
+                            <BarChart3 size={16} className="text-gray-400 shrink-0" />
                         </div>
                         <div className="mt-2">
                             <StackedBar segments={stageSegments} />
@@ -457,11 +487,12 @@ export default function BamOpsPanel() {
                         const v = funnel[k] || 0
                         const max = totals?.cases || 1
                         const pct = Math.round((v / max) * 100)
+                        const label = k.replace('_',' ')
                         return (
                             <div key={k}>
                                 <div className="flex justify-between text-xs text-gray-600 mb-1">
-                                    <span className="capitalize">{k.replace('_',' ')}</span>
-                                    <span>{v} · {pct}%</span>
+                                    <span className="capitalize truncate" title={label}>{label}</span>
+                                    <span className="tabular-nums">{v} · {pct}%</span>
                                 </div>
                                 <div className="h-2 bg-white border rounded-full overflow-hidden">
                                     <div className="h-full bg-bami-yellow" style={{ width: `${pct}%`, transition: `width 700ms ${EASE}` }} />
@@ -483,7 +514,7 @@ export default function BamOpsPanel() {
                 <div className="p-4 bg-gray-50 rounded-xl">
                     <div className="font-semibold mb-2">Leads por producto</div>
 
-                    {/* Móvil: tira scrolleable para evitar apretujes */}
+                    {/* Móvil: tira scrolleable */}
                     <div className="flex sm:hidden gap-3 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
                         {Object.entries(data?.by_product || {}).map(([p, n]) => (
                             <div key={p} className="min-w-[180px]">
@@ -499,7 +530,7 @@ export default function BamOpsPanel() {
                         )}
                     </div>
 
-                    {/* ≥ sm: auto-fit con min ancho cómodo */}
+                    {/* ≥ sm: auto-fit */}
                     <div
                         className="hidden sm:grid gap-3"
                         style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}
@@ -538,7 +569,7 @@ export default function BamOpsPanel() {
                         )}
                     </div>
 
-                    {/* ≥ sm: auto-fit con min ancho cómodo */}
+                    {/* ≥ sm: auto-fit */}
                     <div
                         className="hidden sm:grid gap-3"
                         style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}
