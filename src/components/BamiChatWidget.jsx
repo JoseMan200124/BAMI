@@ -7,7 +7,7 @@ import {
     createNewCase, getCase, notify, setChannel,
     chatBackend, validateWithAI, refreshTracker, PRODUCT_RULES
 } from '../lib/caseStore.js'
-import { Bot, Headphones, Sparkles, Send, BarChart2, LayoutDashboard } from 'lucide-react'
+import { Bot, Headphones, Sparkles, Send, BarChart2, LayoutDashboard, X } from 'lucide-react'
 import ProgressRing from './ProgressRing.jsx'
 
 /** — NLP simple y utilidades — **/
@@ -53,29 +53,55 @@ function parseIntent(text){
     return { action: null, product: null }
 }
 
-/** — Burbujas ricas — **/
-// Avatar + "nube" arriba del avatar (más grande)
+/** — Estilos globales inyectados para el dock y animaciones — **/
+const DockStyles = (
+    <style
+        dangerouslySetInnerHTML={{
+            __html: `
+@keyframes bami-pop { 0% { opacity: 0; transform: translateY(8px) scale(0.98) } 100% { opacity: 1; transform: translateY(0) scale(1) } }
+@keyframes bami-ring { 0% { transform: scale(1); opacity: .45 } 70% { opacity: .15 } 100% { transform: scale(1.35); opacity: 0 } }
+.bami-dock-glow::before{
+  content:'';
+  position:absolute; inset:-12px;
+  border-radius:9999px;
+  background: radial-gradient(40% 40% at 50% 60%, rgba(251,191,36,.30), transparent 70%);
+  filter: blur(12px);
+  z-index:-1;
+}
+.bami-dock-pulse{
+  position:absolute; inset:0;
+  border-radius:9999px;
+  box-shadow: 0 0 0 2px rgba(250,204,21,.55) inset;
+  animation: bami-ring 1800ms ease-out infinite;
+  pointer-events:none;
+}
+.bami-notch{
+  position:absolute; width:14px; height:14px; background:#fff;
+  transform: rotate(45deg);
+  bottom:-7px; right:28px;
+  border-left:1px solid rgba(0,0,0,.05);
+  border-bottom:1px solid rgba(0,0,0,.05);
+  box-shadow: 0 3px 8px rgba(0,0,0,.06);
+}
+`}}
+    />
+)
+
+/** — Burbujas ricas (se mantienen) — **/
 function BamiHeaderMini(){
     return (
         <div className="relative flex items-center gap-2 mb-2">
             <div className="relative shrink-0">
-                {/* Avatar más grande */}
+                {/* Avatar más grande para percepción de marca dentro de burbujas */}
                 <img
                     src="/BAMI.svg"
                     alt="BAMI"
-                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-full ring-2 ring-yellow-300 shadow-sm"
+                    className="w-9 h-9 sm:w-10 sm:h-10 rounded-full ring-2 ring-yellow-300 shadow-sm bg-white object-contain"
                 />
-                {/* Nube tipo etiqueta sobre el avatar */}
-                <span
-                    className="absolute -top-2 left-1.5 bg-white text-[10px] sm:text-[11px] font-semibold text-gray-700 px-2 py-0.5 rounded-full border shadow-sm select-none"
-                >
-                    BAMI
-                </span>
-                {/* Colita de la nube */}
-                <span
-                    aria-hidden
-                    className="absolute -top-[2px] left-5 w-2 h-2 bg-white rotate-45 border-l border-t"
-                />
+                <span className="absolute -top-2 left-1.5 bg-white text-[10px] sm:text-[11px] font-semibold text-gray-700 px-2 py-0.5 rounded-full border shadow-sm select-none">
+          BAMI
+        </span>
+                <span aria-hidden className="absolute -top-[2px] left-6 w-2 h-2 bg-white rotate-45 border-l border-t"/>
             </div>
         </div>
     )
@@ -104,8 +130,8 @@ function Chips({ items, onAction, asButtons=false }){
                     </button>
                 ) : (
                     <span key={idx} className="px-2 py-1 text-xs rounded-full border bg-white whitespace-nowrap">
-                        {label}
-                    </span>
+            {label}
+          </span>
                 )
             ))}
         </div>
@@ -186,7 +212,7 @@ export default function BamiChatWidget({
 
     // Prefijo dinámico: si el simulador está abierto, forzamos 'sim'
     const basePrefix = embed ? 'sim' : 'ui'
-    const getPrefix = () => (window.__BAMI_SIM_OPEN__ ? 'sim' : basePrefix)
+    const getPrefix = () => (typeof window!=='undefined' && window.__BAMI_SIM_OPEN__ ? 'sim' : basePrefix)
     const ev = (name) => new Event(`${getPrefix()}:${name}`)
 
     const push=(role,text)=>setMessages(m=>[...m,{id:Date.now()+Math.random(),role,text}])
@@ -518,7 +544,7 @@ export default function BamiChatWidget({
             )}
 
             <select className="hidden sm:block ml-2 border rounded-md px-2 py-1"
-                    defaultValue={localStorage.getItem('bami_channel') || 'web'}
+                    defaultValue={typeof window!=='undefined' ? (localStorage.getItem('bami_channel') || 'web') : 'web'}
                     onChange={(e)=>changeChannel(e.target.value)} aria-label="Canal">
                 <option value="web">Web</option>
                 <option value="app">App</option>
@@ -543,7 +569,7 @@ export default function BamiChatWidget({
                     </div>
                 </div>
 
-                {/* Tira scrolleable en móvil (evita “amontonado”) */}
+                {/* Tira scrolleable en móvil */}
                 <div className="sm:hidden mt-1 overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
                     <div className="flex items-center gap-1.5 min-w-max pr-1">
                         <ControlStrip compact />
@@ -658,50 +684,116 @@ export default function BamiChatWidget({
         </div>
     )
 
+    /** Variantes no flotantes: sin cambios funcionales **/
     if(variant==='panel'){
         return (<>
+            {DockStyles}
             <div className="rounded-2xl border shadow-sm overflow-hidden">{ChatWindow}</div>
             <UploadAssistant open={showUpload} onClose={()=>setShowUpload(false)} onUploaded={afterUpload} context={embed?'phone':'overlay'}/>
         </>)
     }
     if(variant==='fullscreen' || variant==='app'){
         return (<>
+            {DockStyles}
             <div className="rounded-none sm:rounded-none overflow-hidden h-full">{ChatWindow}</div>
             <UploadAssistant open={showUpload} onClose={()=>setShowUpload(false)} onUploaded={afterUpload} context={embed?'phone':'overlay'}/>
         </>)
     }
 
-    // — Floating (legacy) —
+    /** — Floating rediseñado: “dock” grande + chat emergente con notch — **/
     const disableFloating = disableFloatingTrigger || (typeof window!=='undefined' && window.__BAMI_DISABLE_FLOATING__===true)
     if(disableFloating){
-        return (<UploadAssistant open={showUpload} onClose={()=>setShowUpload(false)} onUploaded={afterUpload} context={embed?'phone':'overlay'}/>)
+        return (<>
+            {DockStyles}
+            <UploadAssistant open={showUpload} onClose={()=>setShowUpload(false)} onUploaded={afterUpload} context={embed?'phone':'overlay'}/>
+        </>)
     }
+
+    // Dimensiones del dock grande
+    const DOCK = { size: 84 } // px del círculo base
+    const rightOffset = 'calc(env(safe-area-inset-right, 0px) + 16px)'
+    const bottomOffset = 'calc(env(safe-area-inset-bottom, 0px) + 16px)'
 
     return (
         <>
+            {DockStyles}
+
+            {/* Dock / botón principal grande */}
             <button
                 onClick={()=>setOpen(v=>!v)}
-                className="bami-floating-trigger fixed z-[56] rounded-full shadow-lg border bg-white w-14 h-14 grid place-items-center overflow-hidden"
-                style={{
-                    right: 'calc(env(safe-area-inset-right, 0px) + 16px)',
-                    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)',
-                }}
-                aria-label="Abrir chat BAMI"
+                aria-label={open ? 'Cerrar chat BAMI' : 'Abrir chat BAMI'}
+                aria-expanded={open}
+                className="fixed z-[60] group"
+                style={{ right: rightOffset, bottom: bottomOffset, width: DOCK.size, height: DOCK.size }}
             >
-                <img src="/BAMI.svg" alt="BAMI" className="w-full h-full object-contain" />
+                <span className="absolute inset-0 bami-dock-glow" aria-hidden />
+                <span
+                    className="
+            relative w-full h-full grid place-items-center rounded-full
+            bg-gradient-to-tr from-amber-300 to-yellow-500 p-[3px] shadow-xl
+            border border-yellow-200/70
+          "
+                >
+          <span className="relative w-full h-full rounded-full bg-white grid place-items-center overflow-hidden">
+            {/* Halo sutil */}
+              <span className="absolute inset-0 rounded-full blur-2xl opacity-25 bg-amber-200" aria-hidden />
+              {/* BAMI icon más grande */}
+              <img
+                  src="/BAMI.svg"
+                  alt=""
+                  className="relative w-[70%] h-[70%] object-contain"
+                  draggable={false}
+              />
+              {/* Pulso suave continuo */}
+              <span className="bami-dock-pulse" aria-hidden />
+              {/* Indicador de estado */}
+              <span
+                  className="absolute right-1.5 bottom-1.5 w-3.5 h-3.5 rounded-full bg-emerald-500 ring-2 ring-white"
+                  aria-hidden
+              />
+          </span>
+        </span>
+
+                {/* Etiqueta accesible para screen readers (visual opcional) */}
+                <span className="sr-only">Chat con BAMI</span>
             </button>
+
+            {/* Ventana del chat que “sale” desde el dock */}
             {open && (
                 <div
-                    className="fixed z-[56] w-[92vw] sm:w-[380px] max-w-[92vw] bg-white rounded-2xl shadow-2xl border overflow-hidden"
+                    className="fixed z-[60] bg-white rounded-2xl shadow-2xl border overflow-hidden"
                     style={{
-                        right: 'calc(env(safe-area-inset-right, 0px) + 16px)',
-                        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 92px)',
+                        right: `calc(${rightOffset})`,
+                        bottom: `calc(${bottomOffset} + ${DOCK.size + 14}px)`,
+                        width: 'min(92vw, 420px)',
+                        animation: 'bami-pop 160ms ease-out'
                     }}
+                    role="dialog"
+                    aria-label="Ventana de chat BAMI"
                 >
+                    {/* Notch/colita que conecta visualmente con el dock */}
+                    <span className="bami-notch" aria-hidden />
+                    {/* Acción de cerrar (sólo visible en móvil si quieres) */}
+                    <button
+                        onClick={()=>setOpen(false)}
+                        className="absolute top-2 right-2 p-1.5 rounded-full hover:bg-black/5 transition"
+                        aria-label="Cerrar chat"
+                        title="Cerrar"
+                    >
+                        <X size={16} />
+                    </button>
+
                     {ChatWindow}
                 </div>
             )}
-            <UploadAssistant open={showUpload} onClose={()=>setShowUpload(false)} onUploaded={afterUpload} context={embed?'phone':'overlay'}/>
+
+            {/* Carga/Subida de documentos mantiene contexto */}
+            <UploadAssistant
+                open={showUpload}
+                onClose={()=>setShowUpload(false)}
+                onUploaded={afterUpload}
+                context={embed?'phone':'overlay'}
+            />
         </>
     )
 }
