@@ -10,7 +10,7 @@ import {
 import { Bot, Headphones, Sparkles, Send, BarChart2, LayoutDashboard } from 'lucide-react'
 import ProgressRing from './ProgressRing.jsx'
 
-/** — NLP simple y utilidades (idéntico que antes) — **/
+/** — NLP simple y utilidades — **/
 const PRODUCT_SYNONYMS = {
     'Tarjeta de Crédito': ['tarjeta de credito','tarjeta de crédito','tarjeta','tc','visa','mastercard','master card'],
     'Préstamo Personal': ['prestamo','préstamo','prestamo personal','préstamo personal','credifacil','credi facil','credito personal','crédito personal','credito','crédito'],
@@ -53,7 +53,7 @@ function parseIntent(text){
     return { action: null, product: null }
 }
 
-/** — Burbujas ricas (idéntico que antes) — **/
+/** — Burbujas ricas — **/
 function BamiHeaderMini(){
     return (
         <div className="flex items-center gap-1 mb-1 text-[10px] sm:text-[11px] text-gray-500">
@@ -145,7 +145,7 @@ export default function BamiChatWidget({
         />
     )
 
-    // Alto footer dinámico (umbral + rAF para evitar ping-pong 1px)
+    // Alto footer dinámico
     useLayoutEffect(() => {
         const el = footerRef.current
         if (!el) return
@@ -166,25 +166,27 @@ export default function BamiChatWidget({
         return () => { if (frame) cancelAnimationFrame(frame); ro.disconnect() }
     }, [])
 
-    const eventPrefix = embed ? 'sim' : 'ui'
-    const ev = (name) => new Event(`${eventPrefix}:${name}`)
+    // Prefijo dinámico: si el simulador está abierto, forzamos 'sim'
+    const basePrefix = embed ? 'sim' : 'ui'
+    const getPrefix = () => (window.__BAMI_SIM_OPEN__ ? 'sim' : basePrefix)
+    const ev = (name) => new Event(`${getPrefix()}:${name}`)
 
     const push=(role,text)=>setMessages(m=>[...m,{id:Date.now()+Math.random(),role,text}])
     const pushRich=(payload)=>setMessages(m=>[...m,{id:Date.now()+Math.random(),role:'bami',type:'rich',payload}])
 
-    // Scroll sin smooth (evita micro-reflujos en serie)
+    // Scroll sin smooth
     const scrollBottom=()=>{ requestAnimationFrame(()=>{ listRef.current?.scrollTo({ top:listRef.current.scrollHeight, behavior:'auto' }) }) }
     useEffect(scrollBottom,[messages,typing])
 
     useEffect(()=>{ const onU=(e)=>setC(e.detail); window.addEventListener('bami:caseUpdate',onU); return ()=>window.removeEventListener('bami:caseUpdate',onU) },[])
 
-    // Suscripciones (compatibles con embed)
+    // Suscripciones (compatibles con embed) — SIN 'upload:open' global
     useEffect(()=>{
-        const openChat = ()=>setOpen(true)
-        const openUpload = ()=>{ setOpen(true); setShowUpload(true); push('bami','Abrí el asistente de subida de documentos.') }
-        const runValidate = async()=>{ setOpen(true); await validateAI(true) }
-        const callAdvisor = ()=>{ setOpen(true); connectAdvisor() }
-        const pushMsg = (e)=>{ setOpen(true); push(e.detail?.role||'bami', e.detail?.text||'') }
+        const openChat = ()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true) }
+        const openUpload = ()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) { setShowUpload(true); return } ; setOpen(true); setShowUpload(true); push('bami','Abrí el asistente de subida de documentos.') }
+        const runValidate = async()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) { return } ; setOpen(true); await validateAI(true) }
+        const callAdvisor = ()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true); connectAdvisor() }
+        const pushMsg = (e)=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true); push(e.detail?.role||'bami', e.detail?.text||'') }
 
         const prefixes = embed ? ['sim'] : ['ui','bami']
         const allEvents = [
@@ -196,11 +198,9 @@ export default function BamiChatWidget({
         ]
 
         prefixes.forEach(p => allEvents.forEach(([n,fn]) => window.addEventListener(`${p}:${n}`, fn)))
-        window.addEventListener('upload:open', openUpload)
 
         return ()=> {
             prefixes.forEach(p => allEvents.forEach(([n,fn]) => window.removeEventListener(`${p}:${n}`, fn)))
-            window.removeEventListener('upload:open', openUpload)
         }
     },[embed])
 
@@ -259,6 +259,9 @@ export default function BamiChatWidget({
         if (detectedProduct && (!action || action === 'product_info')) return newCase(detectedProduct)
 
         if (action === 'create_case' && !detectedProduct) {
+            // Inicio de flujo cliente: garantizamos visibilidad
+            window.dispatchEvent(new Event('bami:clientflow:start'))
+            window.dispatchEvent(new Event('bami:clientflow:ensureClientVisible'))
             push('bami','Perfecto, ¿para qué producto deseas aplicar?')
             pushRich({
                 title: 'Elige un producto',
@@ -277,6 +280,8 @@ export default function BamiChatWidget({
         if (action === 'create_case' && detectedProduct) return newCase(detectedProduct)
 
         if (action === 'ask_requirements') {
+            window.dispatchEvent(new Event('bami:clientflow:start'))
+            window.dispatchEvent(new Event('bami:clientflow:ensureClientVisible'))
             const p = detectedProduct || (getCase()?.product ?? 'Tarjeta de Crédito')
             const req = PRODUCT_RULES[p] || []
             pushRich({
@@ -294,6 +299,7 @@ export default function BamiChatWidget({
         }
 
         if (action === 'ask_times') {
+            window.dispatchEvent(new Event('bami:clientflow:ensureClientVisible'))
             push('bami', 'El tiempo típico de análisis es **8–24h hábiles**. Puedo iniciar tu expediente cuando me indiques el producto.')
             return
         }
@@ -339,7 +345,13 @@ export default function BamiChatWidget({
         return ['Puedo crear tu expediente, mostrar **requisitos** y **tiempos**, abrir **subida de documentos** o conectarte con un **asesor**.','¿Qué deseas hacer?'].join('\n')
     }
 
+    const startClientFlowSignals = () => {
+        window.dispatchEvent(new Event('bami:clientflow:start'))
+        window.dispatchEvent(new Event('bami:clientflow:ensureClientVisible'))
+    }
+
     const newCase=async(product='Tarjeta de Crédito')=>{
+        startClientFlowSignals()
         const cc=await createNewCase(product, getCase()?.applicant || null)
         notify('Expediente creado')
         push('user',`Iniciar expediente de ${product}`)
@@ -363,13 +375,14 @@ export default function BamiChatWidget({
                     { label: 'Ver tracker', value: 'tracker' },
                 ]
             })
-            window.dispatchEvent(new Event(`${eventPrefix}:upload`))
-            window.dispatchEvent(new Event('upload:open'))
-            window.dispatchEvent(new Event(`${eventPrefix}:tracker:open`))
+            // Abrir upload/trackers ÚNICAMENTE en el destino correcto
+            window.dispatchEvent(ev('upload'))
+            window.dispatchEvent(ev('tracker:open'))
         },150)
     }
 
     const askMissing=async()=>{
+        startClientFlowSignals()
         const current=getCase()
         if(!current) return push('bami','Aún no hay expediente. Escribe **“nuevo”** o dime el producto (ej. “tarjeta de crédito”).')
         await refreshTracker()
@@ -394,6 +407,7 @@ export default function BamiChatWidget({
     }
 
     const openUploadManual=()=>{
+        startClientFlowSignals()
         if(!getCase()) return push('bami','Primero creo tu expediente. Dime el producto.')
         push('user','Subir documentos')
         setShowUpload(true)
@@ -406,6 +420,7 @@ export default function BamiChatWidget({
     }
 
     const validateAI=async(silent=false)=>{
+        startClientFlowSignals()
         if(!getCase()) return push('bami','Crea tu expediente primero con “nuevo” o dime el producto.')
         setMode('ai'); if(!silent) push('user','Validar con IA'); setTyping(true)
         const steps=['🔍 Revisando legibilidad de archivos…','🛡️ Confirmando identidad y seguridad…','📈 Evaluando reglas del producto…','✨ Calculando score y explicabilidad…']
@@ -415,6 +430,7 @@ export default function BamiChatWidget({
     }
 
     const connectAdvisor=()=>{
+        startClientFlowSignals()
         setMode('advisor')
         push('user','Hablar con un asesor')
         setTyping(true)
@@ -432,7 +448,7 @@ export default function BamiChatWidget({
     const endAdvisor=()=>{ setAdvisorConnected(false); push('advisor','Gracias por contactarnos. Cierro el chat, pero puedes volver cuando quieras.') }
     const changeChannel=(ch)=>{ setChannel(ch); push('bami',`Continuaremos por ${ch.toUpperCase()} sin perder el progreso.`) }
 
-    /** UI encabezado / mini tracker (idéntico que antes) **/
+    /** UI encabezado / mini tracker **/
     const HeaderTab=({id,icon:Icon,children})=>(
         <button onClick={()=>setMode(id)} className={`flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs sm:text-sm ${mode===id?'bg-white shadow':'hover:bg-white/60'}`}>
             <Icon size={16}/> {children}
@@ -587,7 +603,7 @@ export default function BamiChatWidget({
                 : (variant==='fullscreen' ? { height: baseH_full, minHeight: 420 }
                     : (variant==='panel' ? { height: 520 } : { height: 520 })))
 
-    // ⚠️ 'relative' + contención para estabilidad (anti-flicker).
+    // ⚠️ 'relative' + contención para estabilidad
     const ChatWindow=(
         <div
             className="bami-stable relative min-h-0 flex flex-col h-full w-full"
@@ -607,7 +623,6 @@ export default function BamiChatWidget({
         </>)
     }
     if(variant==='fullscreen' || variant==='app'){
-        // 🔧 IMPORTANTE: h-full aquí asegura que el 100% del ChatWindow tenga referencia válida dentro del simulador.
         return (<>
             <div className="rounded-none sm:rounded-none overflow-hidden h-full">{ChatWindow}</div>
             <UploadAssistant open={showUpload} onClose={()=>setShowUpload(false)} onUploaded={afterUpload} context={embed?'phone':'overlay'}/>

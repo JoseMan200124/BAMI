@@ -22,22 +22,27 @@ export default function BamiHub() {
         const setVH = () =>
             document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`)
         setVH()
-        window.addEventListener('resize', setVH, { passive: true })
+        window.addEventListener('resize', setVH)
         return () => window.removeEventListener('resize', setVH)
     }, [])
 
-    // Helper: cerrar overlays de escritorio y/o simulador
-    const closeOverlays = ({ keepSimulator = false } = {}) => {
+    // Helper: cerrar overlays de escritorio (NO cierra el simulador)
+    const closeDesktopOverlays = () => {
         setShowTracker(false)
         setShowForm(false)
-        if (!keepSimulator) setShowMobile(false)
+        // cerrar asistentes/overlays internos
+        try {
+            window.dispatchEvent(new Event('ui:upload:close'))
+            window.dispatchEvent(new Event('upload:close'))
+            window.dispatchEvent(new Event('sim:tracker:close'))
+            window.dispatchEvent(new Event('sim:ops:close'))
+        } catch {}
+    }
 
-        // Cierres por eventos (defensivos)
-        window.dispatchEvent(new Event('ui:upload:close'))
-        window.dispatchEvent(new Event('ui:tracker:close'))
-        window.dispatchEvent(new Event('ui:ops:close'))
-        window.dispatchEvent(new Event('sim:tracker:close'))
-        window.dispatchEvent(new Event('sim:ops:close'))
+    // Helper: asegurar foco en “Cliente”
+    const ensureClientFocus = () => {
+        setViewMode((prev) => (prev === 'ops' ? 'client' : prev))
+        closeDesktopOverlays()
     }
 
     // Suscripciones
@@ -49,23 +54,40 @@ export default function BamiHub() {
         const onTrackerClose = () => setShowTracker(false)
 
         const onFormOpen = () => setShowForm(true)
+
+        const onSimOpen = () => {
+            // Si abro el simulador, cierro overlays de escritorio y enfoco “Cliente”
+            ensureClientFocus()
+        }
         const onSimClose = () => setShowMobile(false)
 
-        const onCloseAll = () => closeOverlays({ keepSimulator: false })
-
-        // Al iniciar flujo de cliente, priorizamos área cliente
-        const onEnsureClientVisible = () => {
-            setViewMode((prev) => (prev === 'ops' ? 'client' : prev))
+        const onCloseAll = () => {
+            // Cierra TODO (cuando el usuario lo pida explícitamente)
+            setShowTracker(false)
+            setShowForm(false)
+            setShowMobile(false)
+            window.dispatchEvent(new Event('ui:upload:close'))
+            window.dispatchEvent(new Event('upload:close'))
+            window.dispatchEvent(new Event('sim:tracker:close'))
+            window.dispatchEvent(new Event('sim:ops:close'))
         }
+
+        // 🔹 Cuando el chat empieza un flujo de cliente, forzamos visibilidad adecuada
+        const onEnsureClientVisible = () => ensureClientFocus()
+
+        // 🔹 Inicio explícito de flujo cliente: cierra elementos por encima y enfoca cliente
+        const onClientFlowStart = () => ensureClientFocus()
 
         window.addEventListener('bami:caseUpdate', onU)
         window.addEventListener('ui:tracker:open', onTrackerOpen)
         window.addEventListener('ui:tracker:toggle', onTrackerToggle)
         window.addEventListener('ui:tracker:close', onTrackerClose)
         window.addEventListener('ui:form:open', onFormOpen)
+        window.addEventListener('sim:open', onSimOpen)
         window.addEventListener('ui:sim:close', onSimClose)
         window.addEventListener('ui:closeAll', onCloseAll)
         window.addEventListener('bami:clientflow:ensureClientVisible', onEnsureClientVisible)
+        window.addEventListener('bami:clientflow:start', onClientFlowStart)
 
         return () => {
             window.removeEventListener('bami:caseUpdate', onU)
@@ -73,81 +95,46 @@ export default function BamiHub() {
             window.removeEventListener('ui:tracker:toggle', onTrackerToggle)
             window.removeEventListener('ui:tracker:close', onTrackerClose)
             window.removeEventListener('ui:form:open', onFormOpen)
+            window.removeEventListener('sim:open', onSimOpen)
             window.removeEventListener('ui:sim:close', onSimClose)
             window.removeEventListener('ui:closeAll', onCloseAll)
             window.removeEventListener('bami:clientflow:ensureClientVisible', onEnsureClientVisible)
+            window.removeEventListener('bami:clientflow:start', onClientFlowStart)
         }
     }, [])
 
-    // Si abro el simulador, cierro modales de escritorio
-    useEffect(() => {
-        if (showMobile) {
-            setShowTracker(false)
-            setShowForm(false)
-            window.dispatchEvent(new Event('ui:upload:close'))
-            window.dispatchEvent(new Event('ui:tracker:close'))
-            window.dispatchEvent(new Event('ui:ops:close'))
-        }
-    }, [showMobile])
-
     // Acciones
     const start = async () => {
-        closeOverlays({ keepSimulator: false })
         const cc = await createNewCase(product)
         notify('Expediente creado')
-        setC(cc)
-        setShowTracker(true)
+        setC(cc); setShowTracker(true)
     }
-
     const reopen = async () => {
-        closeOverlays({ keepSimulator: false })
         const prevApplicant = getCase()?.applicant || null
         const cc = await createNewCase(product, prevApplicant)
         notify('Proceso reabierto')
-        setC(cc)
-        setShowTracker(true)
+        setC(cc); setShowTracker(true)
     }
 
-    // ⛔ Durante Autopilot NO abrimos chat flotante; sólo señalizamos upload/tracker/ops donde toque.
+    // ⛔ Durante Autopilot NO abrimos el chat; sólo la UI de upload/tracker.
+    // ✅ Si el simulador está abierto, disparamos eventos “sim:*” para que el upload se abra DENTRO del simulador.
     const openUploadEverywhere = () => {
+        const prefix = showMobile ? 'sim' : 'ui'
         const isAutopilot = typeof window !== 'undefined' && window.__BAMI_AGENT_ACTIVE__ === true
-
-        if (showMobile) {
-            // estoy en simulador → cierro internos antes de abrir upload dentro del sim
-            window.dispatchEvent(new Event('sim:ops:close'))
-            window.dispatchEvent(new Event('sim:tracker:close'))
-            if (!isAutopilot) window.dispatchEvent(new Event('sim:open')) // asegurar pantalla de chat
-            // 🚫 NO disparamos upload global; sólo dentro del simulador
-            window.dispatchEvent(new Event('sim:upload'))
-            return
+        if (!isAutopilot) {
+            window.dispatchEvent(new Event(`${prefix}:open`))
         }
-
-        // escritorio
-        closeOverlays({ keepSimulator: false })
-        if (!isAutopilot) window.dispatchEvent(new Event('ui:open'))
-        window.dispatchEvent(new Event('ui:upload'))
+        // 🔸 Sólo evento namespaced; SIN 'upload:open' global para no abrir doble en escritorio.
+        window.dispatchEvent(new Event(`${prefix}:upload`))
     }
 
     const validateEverywhere = () => {
-        if (showMobile) {
-            window.dispatchEvent(new Event('sim:ops:close'))
-            window.dispatchEvent(new Event('sim:tracker:open'))
-            window.dispatchEvent(new Event('sim:validate'))
-            return
-        }
-        closeOverlays({ keepSimulator: false })
-        setShowTracker(true)
-        window.dispatchEvent(new Event('ui:validate'))
+        const p = showMobile ? 'sim' : 'ui'
+        window.dispatchEvent(new Event(`${p}:validate`))
     }
-
     const advisorEverywhere = () => {
-        if (showMobile) {
-            window.dispatchEvent(new Event('sim:ops:close'))
-            window.dispatchEvent(new Event('sim:advisor'))
-            return
-        }
-        closeOverlays({ keepSimulator: false })
-        window.dispatchEvent(new Event('ui:advisor'))
+        const p = showMobile ? 'sim' : 'ui'
+        window.dispatchEvent(new Event(`${p}:advisor`))
     }
 
     // CTA recomendado
@@ -176,7 +163,7 @@ export default function BamiHub() {
                             data-agent-id="btn-simular"
                             className="btn btn-sm whitespace-nowrap"
                             onClick={() => {
-                                window.dispatchEvent(new Event('ui:closeAll'))
+                                // Abrir simulador y forzar foco en cliente
                                 setShowMobile(true)
                                 setTimeout(() => window.dispatchEvent(new Event('sim:open')), 80)
                             }}
@@ -185,7 +172,7 @@ export default function BamiHub() {
                         </button>
                     </div>
                 </div>
-                {/* Chat fijo sin flotante de esquina */}
+                {/* 🔒 Evitamos chat flotante de la esquina siempre aquí */}
                 <BamiChatWidget variant="fullscreen" disableFloatingTrigger={true} allowOpsButton={false} />
             </section>
 
@@ -200,11 +187,11 @@ export default function BamiHub() {
                         <button
                             data-agent-id="btn-tracker"
                             className="btn btn-sm whitespace-nowrap"
-                            onClick={() => { closeOverlays({ keepSimulator: true }); setShowTracker(true) }}
+                            onClick={() => setShowTracker(true)}
                         >
                             Abrir tracker
                         </button>
-                        <button className="btn btn-sm whitespace-nowrap" onClick={() => { closeOverlays({ keepSimulator: true }); setShowForm(true) }}>Nuevo caso</button>
+                        <button className="btn btn-sm whitespace-nowrap" onClick={() => setShowForm(true)}>Nuevo caso</button>
                     </div>
                 </div>
                 <div className="p-3 sm:p-4 overflow-auto" style={{ height: 'calc(100svh - 240px)' }}>
@@ -216,7 +203,7 @@ export default function BamiHub() {
 
     return (
         <main className="min-h-[100svh] bg-neutral-50 flex flex-col">
-            {/* HEADER superior */}
+            {/* HEADER superior fijo */}
             <header className="sticky top-0 z-[60] backdrop-blur bg-white/85 border-b">
                 <div className="max-w-7xl mx-auto px-3 sm:px-4 h-16 flex items-center justify-between gap-2">
                     {/* Título */}
@@ -227,7 +214,7 @@ export default function BamiHub() {
                         </div>
                     </div>
 
-                    {/* Toolbar */}
+                    {/* Toolbar: SIN WRAP (scroll horizontal si se llena) */}
                     <div
                         className="hidden sm:flex items-center gap-2 flex-nowrap overflow-x-auto whitespace-nowrap pl-2"
                         style={{ scrollbarWidth: 'none' }}
@@ -257,13 +244,12 @@ export default function BamiHub() {
                             ))}
                         </div>
 
-                        {/* Acciones */}
+                        {/* Acciones principales: nunca hacen wrap */}
                         <div className="flex items-center gap-2 flex-nowrap">
                             <button
                                 data-agent-id="btn-simular-top"
                                 className="btn h-9 px-3 whitespace-nowrap"
                                 onClick={() => {
-                                    window.dispatchEvent(new Event('ui:closeAll'))
                                     setShowMobile(true)
                                     setTimeout(() => window.dispatchEvent(new Event('sim:open')), 80)
                                 }}
@@ -282,7 +268,7 @@ export default function BamiHub() {
                             <button
                                 data-agent-id="btn-tracker-top"
                                 className="btn h-9 px-3 whitespace-nowrap"
-                                onClick={() => { closeOverlays({ keepSimulator: true }); setShowTracker(true) }}
+                                onClick={() => setShowTracker(true)}
                             >
                                 Tracker
                             </button>
@@ -346,7 +332,6 @@ export default function BamiHub() {
                                         data-agent-id="btn-simular-client"
                                         className="btn btn-sm whitespace-nowrap"
                                         onClick={() => {
-                                            window.dispatchEvent(new Event('ui:closeAll'))
                                             setShowMobile(true)
                                             setTimeout(() => window.dispatchEvent(new Event('sim:open')), 80)
                                         }}
@@ -374,8 +359,8 @@ export default function BamiHub() {
                             <div className="px-3 sm:px-4 py-2 border-b bg-gray-50 flex items-center justify-between">
                                 <div className="font-semibold">Área BAM · Ops</div>
                                 <div className="flex items-center gap-2">
-                                    <button className="btn btn-sm whitespace-nowrap" onClick={() => { closeOverlays({ keepSimulator: true }); setShowTracker(true) }}>Abrir tracker</button>
-                                    <button className="btn btn-sm whitespace-nowrap" onClick={() => { closeOverlays({ keepSimulator: true }); setShowForm(true) }}>Nuevo caso</button>
+                                    <button className="btn btn-sm whitespace-nowrap" onClick={() => setShowTracker(true)}>Abrir tracker</button>
+                                    <button className="btn btn-sm whitespace-nowrap" onClick={() => setShowForm(true)}>Nuevo caso</button>
                                 </div>
                             </div>
                             <div className="p-3 sm:p-4">
@@ -428,7 +413,7 @@ export default function BamiHub() {
                 </div>
             )}
 
-            {/* === AGENTE BAMI === */}
+            {/* === AGENTE BAMI (globo inferior derecho con Autopilot) === */}
             <BamiAgent
                 caseData={c}
                 product={product}
@@ -440,7 +425,6 @@ export default function BamiHub() {
                     advisorEverywhere,
                     openTracker: () => setShowTracker(true),
                     openSimulator: () => {
-                        window.dispatchEvent(new Event('ui:closeAll'))
                         setShowMobile(true)
                         setTimeout(() => window.dispatchEvent(new Event('sim:open')), 80)
                     },

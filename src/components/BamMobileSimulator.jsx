@@ -25,9 +25,9 @@ const MUTED = '#A7AFB7'
 
 // límites del shell
 const SHELL_MAX_W = 420
-const SHELL_MAX_H = 840
-const SHELL_VW   = 0.92   // 92% del viewport
-const SHELL_VH   = 0.92   // 92% del viewport
+the SHELL_MAX_H = 840
+const SHELL_VW   = 0.92
+const SHELL_VH   = 0.92
 
 export default function BamMobileSimulator({ open = false, onClose = () => {} }) {
     const [tab, setTab] = useState('gestionar')
@@ -35,7 +35,15 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
     const [showTracker, setShowTracker] = useState(false)
     const [showOps, setShowOps] = useState(false)
 
-    // Tamaño CONGELADO del teléfono (en px). Sólo se recalcula en "resize".
+    // Señal global: el simulador está abierto (para rutear eventos “sim:*”)
+    useEffect(() => {
+        if (!open) return
+        const prev = window.__BAMI_SIM_OPEN__
+        window.__BAMI_SIM_OPEN__ = true
+        return () => { window.__BAMI_SIM_OPEN__ = prev }
+    }, [open])
+
+    // Tamaño CONGELADO del teléfono (en px)
     const [shellSize, setShellSize] = useState(() => {
         const w = Math.min(SHELL_MAX_W, Math.round(window.innerWidth * SHELL_VW))
         const h = Math.min(SHELL_MAX_H, Math.round(window.innerHeight * SHELL_VH))
@@ -113,7 +121,6 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
             data-simulator
             className="relative rounded-[36px] border-[10px] border-black shadow-2xl overflow-hidden z-[4005]"
             style={{
-                // ❗️Tamaño Fijo (anti-flicker) + aislamiento del layout
                 width: `${shellSize.w}px`,
                 height: `${shellSize.h}px`,
                 backgroundColor: 'black',
@@ -290,7 +297,6 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
             if (window.__BAMI_LOCK_TRACKER__ || window.__BAMI_AGENT_ACTIVE__) return
             onClose?.()
         }
-        // altura máxima relativa al SHELL (no al viewport)
         const modalMaxH = Math.max(280, Math.floor(shellSize.h * 0.78))
         return (
             <div className="absolute inset-0 z-[45]" style={{ pointerEvents: 'auto' }}>
@@ -330,7 +336,7 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
                         className="relative flex-1 overflow-hidden"
                         style={{ backgroundColor: '#ffffff', color: '#000000' }}
                     >
-                        {/* Chat ocupa 100% del alto del teléfono, aislado */}
+                        {/* Chat ocupa 100% del alto del teléfono */}
                         <div
                             className="absolute inset-0"
                             style={{
