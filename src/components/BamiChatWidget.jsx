@@ -131,22 +131,7 @@ const TextWithBreaks = ({ text }) => {
 function BamiSpeech({ title, subtitle, children }){
     return (
         <div className="bami-speech">
-            {/* Avatar grande */}
-            <div className="bami-avatar">
-                <span className="ring" aria-hidden />
-                <img src="/BAMI.svg" alt="BAMI" className="w-full h-full object-contain p-2.5" draggable={false}/>
-            </div>
 
-            {/* Bubble alineada con notch */}
-            <div className="bami-bubble">
-                <div className="bami-chip">
-                    <img src="/BAMI.svg" alt="" className="w-4 h-4 object-contain rounded-full" />
-                    BAMI
-                </div>
-                {title && <div className="font-semibold">{title}</div>}
-                {subtitle && <div className="text-xs text-gray-600 mt-0.5">{subtitle}</div>}
-                {children}
-            </div>
         </div>
     )
 }
