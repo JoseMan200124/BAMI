@@ -182,25 +182,27 @@ export default function BamiChatWidget({
     useEffect(()=>{
         const openChat = ()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true) }
         const openUpload = ()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) { setShowUpload(true); return } ; setOpen(true); setShowUpload(true); push('bami','Abrí el asistente de subida de documentos.') }
-        const runValidate = async()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) { /* sólo backend/IA si aplicara */ return } ; setOpen(true); await validateAI(true) }
+        const runValidate = async()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) { return } ; setOpen(true); await validateAI(true) }
         const callAdvisor = ()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true); connectAdvisor() }
         const pushMsg = (e)=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true); push(e.detail?.role||'bami', e.detail?.text||'') }
 
         const prefixes = embed ? ['sim'] : ['ui','bami']
         const allEvents = [
             ['open', openChat],
-            ['upload', openUpload],
+            ['upload', openUpload],       // 🔸 sólo prefijos, sin evento global
             ['validate', runValidate],
             ['advisor', callAdvisor],
             ['msg', pushMsg],
         ]
 
         prefixes.forEach(p => allEvents.forEach(([n,fn]) => window.addEventListener(`${p}:${n}`, fn)))
-        window.addEventListener('upload:open', openUpload)
+
+        // ❌ Eliminado: no escuchamos 'upload:open' global para evitar abrir en ambos contextos
+        // window.addEventListener('upload:open', openUpload)
 
         return ()=> {
             prefixes.forEach(p => allEvents.forEach(([n,fn]) => window.removeEventListener(`${p}:${n}`, fn)))
-            window.removeEventListener('upload:open', openUpload)
+            // window.removeEventListener('upload:open', openUpload)
         }
     },[embed])
 
@@ -363,8 +365,8 @@ export default function BamiChatWidget({
                     { label: 'Ver tracker', value: 'tracker' },
                 ]
             })
+            // ✅ abrir upload SOLO en el contexto de este widget
             window.dispatchEvent(new Event(`${eventPrefix}:upload`))
-            window.dispatchEvent(new Event('upload:open'))
             window.dispatchEvent(new Event(`${eventPrefix}:tracker:open`))
         },150)
     }
@@ -587,7 +589,6 @@ export default function BamiChatWidget({
                 : (variant==='fullscreen' ? { height: baseH_full, minHeight: 420 }
                     : (variant==='panel' ? { height: 520 } : { height: 520 })))
 
-    // ⚠️ 'relative' + contención para estabilidad
     const ChatWindow=(
         <div
             className="bami-stable relative min-h-0 flex flex-col h-full w-full"
