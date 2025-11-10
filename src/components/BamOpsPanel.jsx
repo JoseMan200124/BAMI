@@ -133,7 +133,7 @@ function buildDemoData() {
     const requiere = total - (recibido + en_revision + aprobado + alternativa)
 
     const leads = Array.from({ length: 28 }).map((_, i) => ({
-        id: `L${(1500 + i)}`,
+        id: `L${1500 + i}`,
         product: ['Tarjeta de Crédito', 'Préstamo Personal', 'Hipoteca', 'PyME'][i % 4],
         channel: ['web', 'app', 'whatsapp', 'sucursal'][i % 4],
         applicant: { name: ['María','Luis','Karla','Diego','Sofía','Jorge'][i % 6] + ' ' + ['Pérez','Gómez','López','Ramírez'][i % 4] },
@@ -171,6 +171,17 @@ function buildDemoData() {
         },
         leads
     }
+}
+
+/** ====== NUEVO: Tarjeta compacta y legible para distribuciones ====== **/
+function StatTile({ label, value, hint }) {
+    return (
+        <div className="p-4 rounded-2xl border bg-white shadow-sm min-h-[128px] flex flex-col justify-between">
+            <div className="text-sm font-medium text-gray-700 leading-5 break-words">{label}</div>
+            <div className="mt-1 text-3xl font-extrabold tabular-nums tracking-tight">{value}</div>
+            {hint && <div className="mt-1 text-[12px] leading-5 text-gray-500 break-words">{hint}</div>}
+        </div>
+    )
 }
 
 export default function BamOpsPanel() {
@@ -468,31 +479,81 @@ export default function BamOpsPanel() {
 
             {/* Distribuciones */}
             <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-3">
+                {/* Leads por producto */}
                 <div className="p-4 bg-gray-50 rounded-xl">
                     <div className="font-semibold mb-2">Leads por producto</div>
-                    <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+
+                    {/* Móvil: tira scrolleable para evitar apretujes */}
+                    <div className="flex sm:hidden gap-3 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
                         {Object.entries(data?.by_product || {}).map(([p, n]) => (
-                            <div key={p} className="p-3 rounded-xl border bg-white">
-                                <div className="text-xs text-gray-500">{p}</div>
-                                <div className="text-xl font-bold">{n}</div>
-                                {showExplain && <div className="text-[11px] text-gray-500 mt-1">Distribución por tipo de producto.</div>}
+                            <div key={p} className="min-w-[180px]">
+                                <StatTile
+                                    label={p}
+                                    value={n}
+                                    hint={showExplain ? 'Distribución por tipo de producto.' : undefined}
+                                />
                             </div>
                         ))}
-                        {!Object.keys(data?.by_product || {}).length && <div className="text-sm text-gray-500">Sin datos.</div>}
+                        {!Object.keys(data?.by_product || {}).length && (
+                            <div className="text-sm text-gray-500">Sin datos.</div>
+                        )}
+                    </div>
+
+                    {/* ≥ sm: auto-fit con min ancho cómodo */}
+                    <div
+                        className="hidden sm:grid gap-3"
+                        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}
+                    >
+                        {Object.entries(data?.by_product || {}).map(([p, n]) => (
+                            <StatTile
+                                key={p}
+                                label={p}
+                                value={n}
+                                hint={showExplain ? 'Distribución por tipo de producto.' : undefined}
+                            />
+                        ))}
+                        {!Object.keys(data?.by_product || {}).length && (
+                            <div className="text-sm text-gray-500">Sin datos.</div>
+                        )}
                     </div>
                 </div>
 
+                {/* Leads por canal */}
                 <div className="p-4 bg-gray-50 rounded-xl">
                     <div className="font-semibold mb-2">Leads por canal</div>
-                    <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+
+                    {/* Móvil: tira scrolleable */}
+                    <div className="flex sm:hidden gap-3 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
                         {Object.entries(data?.by_channel || {}).map(([p, n]) => (
-                            <div key={p} className="p-3 rounded-xl border bg-white">
-                                <div className="text-xs text-gray-500">{p}</div>
-                                <div className="text-xl font-bold">{n}</div>
-                                {showExplain && <div className="text-[11px] text-gray-500 mt-1">Origen del lead.</div>}
+                            <div key={p} className="min-w-[180px]">
+                                <StatTile
+                                    label={p}
+                                    value={n}
+                                    hint={showExplain ? 'Origen del lead.' : undefined}
+                                />
                             </div>
                         ))}
-                        {!Object.keys(data?.by_channel || {}).length && <div className="text-sm text-gray-500">Sin datos.</div>}
+                        {!Object.keys(data?.by_channel || {}).length && (
+                            <div className="text-sm text-gray-500">Sin datos.</div>
+                        )}
+                    </div>
+
+                    {/* ≥ sm: auto-fit con min ancho cómodo */}
+                    <div
+                        className="hidden sm:grid gap-3"
+                        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}
+                    >
+                        {Object.entries(data?.by_channel || {}).map(([p, n]) => (
+                            <StatTile
+                                key={p}
+                                label={p}
+                                value={n}
+                                hint={showExplain ? 'Origen del lead.' : undefined}
+                            />
+                        ))}
+                        {!Object.keys(data?.by_channel || {}).length && (
+                            <div className="text-sm text-gray-500">Sin datos.</div>
+                        )}
                     </div>
                 </div>
             </div>
