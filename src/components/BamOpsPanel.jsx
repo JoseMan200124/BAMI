@@ -7,7 +7,6 @@ import { Clock, CheckCircle2, BarChart3, Star, TrendingUp, Info } from 'lucide-r
 const TOKEN_KEY = 'bami_admin_token'
 const EASE = 'cubic-bezier(0.22,1,0.36,1)'
 
-/* ------------------------------ UI helpers ------------------------------ */
 function Card({ title, value, hint, children, className = '', explain }) {
     return (
         <div className={`p-4 rounded-2xl border bg-white ${className}`}>
@@ -104,7 +103,6 @@ function fmtMinutesToHM(min) {
     return h > 0 ? `${h}h ${mm}m` : `${mm}m`
 }
 
-// Animación simple de conteo
 function useCountUp(target = 0, duration = 800) {
     const [val, setVal] = useState(0)
     const rafRef = useRef(null)
@@ -122,14 +120,11 @@ function useCountUp(target = 0, duration = 800) {
         cancelAnimationFrame(rafRef.current || 0)
         rafRef.current = requestAnimationFrame(step)
         return () => cancelAnimationFrame(rafRef.current || 0)
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [target])
+    }, [target]) // eslint-disable-line
     return val
 }
 
-/* ------------------------------ Demo data ------------------------------ */
 function buildDemoData() {
-    // números coherentes y “llenos”
     const total = 260
     const recibido = 104
     const en_revision = 74
@@ -156,8 +151,8 @@ function buildDemoData() {
             approval_rate: aprobado / Math.max(1, total),
             missing_avg: 1.2,
             avg_response_minutes: 46,
-            tta_aprob_minutes: 9 * 60 + 20, // tiempo a aprobación promedio
-            nps: 58 // puntaje neto del promotor (estimado)
+            tta_aprob_minutes: 9 * 60 + 20,
+            nps: 58
         },
         funnel: { requiere, recibido, en_revision, aprobado, alternativa },
         sla: { avg_minutes: 39, p90_minutes: 78, p95_minutes: 110 },
@@ -178,11 +173,9 @@ function buildDemoData() {
     }
 }
 
-/* ------------------------------ Main panel ------------------------------ */
 export default function BamOpsPanel() {
-    // Autologin DEMO: nunca pedimos credenciales
     const [data, setData] = useState(null)
-    const [showExplain, setShowExplain] = useState(true) // mostrar ayudas por defecto
+    const [showExplain, setShowExplain] = useState(true)
 
     const fetchDataOnce = async () => {
         try {
@@ -190,14 +183,12 @@ export default function BamOpsPanel() {
                 localStorage.setItem(TOKEN_KEY, 'demo')
             }
             const d = await api.adminAnalytics()
-            // Si el backend responde bien, úsalo; si no, demo.
             setData(d && typeof d === 'object' ? enhance(d) : buildDemoData())
         } catch {
             setData(buildDemoData())
         }
     }
 
-    // Mejora una posible respuesta real para asegurar claves usadas
     const enhance = (d) => {
         const base = buildDemoData()
         return {
@@ -213,12 +204,8 @@ export default function BamOpsPanel() {
         }
     }
 
-    useEffect(() => {
-        // Solo una vez para evitar “flicker” y cumplir “mostrar una vez”
-        fetchDataOnce()
-    }, [])
+    useEffect(() => { fetchDataOnce() }, [])
 
-    // Ingesta del lead que crea BAMI al finalizar el flujo
     useEffect(() => {
         const ingest = (e) => {
             const detail = e?.detail || {}
@@ -236,7 +223,6 @@ export default function BamOpsPanel() {
                     created_at: Date.now()
                 }
                 const leads = [newLead, ...(d.leads || [])]
-                // Ajustar contadores coherentemente
                 const totals = { ...d.totals }
                 totals.cases = (totals.cases || 0) + 1
                 totals.aprobados = (totals.aprobados || 0) + (newLead.stage === 'aprobado' ? 1 : 0)
@@ -254,7 +240,6 @@ export default function BamOpsPanel() {
 
                 return { ...d, totals, funnel, leads, by_product, by_channel }
             })
-            // Muestra explicación al llegar el lead
             setShowExplain(true)
         }
         const toggleExplain = () => setShowExplain(v => !v)
@@ -266,7 +251,6 @@ export default function BamOpsPanel() {
         }
     }, [])
 
-    // -------- Derivados ----------
     const totals = useMemo(() => data?.totals || {}, [data])
     const funnel = useMemo(() => data?.funnel || {}, [data])
 
@@ -286,7 +270,6 @@ export default function BamOpsPanel() {
     const nps = totals?.nps ?? null
     const ttaAprobMin = totals?.tta_aprob_minutes ?? null
 
-    // Count-ups
     const cuTotal = useCountUp(totalLeads, 700)
     const cuAprob = useCountUp(totals?.aprobados || 0, 700)
     const cuAlt = useCountUp(totals?.alternativas || 0, 700)
@@ -312,7 +295,7 @@ export default function BamOpsPanel() {
                 <span className="ml-2 text-xs text-gray-500">(demo listo para presentación)</span>
             </h3>
 
-            {/* =================== Indicadores clave =================== */}
+            {/* Indicadores clave */}
             <div className="mt-2">
                 <div className="text-xs text-gray-500 mb-1">Indicadores clave</div>
 
@@ -446,39 +429,13 @@ export default function BamOpsPanel() {
                 </div>
             </div>
 
-            {/* KPIs resumidos (con count-up) */}
+            {/* KPIs resumidos */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-4">
-                <Card
-                    title="Leads totales"
-                    value={cuTotal}
-                    className="min-h-[104px]"
-                    explain="Cantidad de oportunidades generadas en el periodo."
-                />
-                <Card
-                    title="Aprobados"
-                    value={cuAprob}
-                    hint={`Tasa ${cuPct}%`}
-                    className="min-h-[104px]"
-                    explain="Casos con decisión positiva respecto al total."
-                />
-                <Card
-                    title="Alternativa"
-                    value={cuAlt}
-                    className="min-h-[104px]"
-                    explain="Casos a los que se sugiere un producto distinto."
-                />
-                <Card
-                    title="En revisión"
-                    value={cuRev}
-                    className="min-h-[104px]"
-                    explain="Casos que están siendo analizados por IA/operaciones."
-                />
-                <Card
-                    title="Pend. docs prom."
-                    value={(data?.totals?.missing_avg || 0).toFixed(1)}
-                    className="min-h-[104px]"
-                    explain="Promedio de documentos faltantes por caso."
-                />
+                <Card title="Leads totales" value={cuTotal} className="min-h-[104px]" explain="Cantidad de oportunidades generadas en el periodo."/>
+                <Card title="Aprobados" value={cuAprob} hint={`Tasa ${cuPct}%`} className="min-h-[104px]" explain="Casos con decisión positiva respecto al total."/>
+                <Card title="Alternativa" value={cuAlt} className="min-h-[104px]" explain="Casos a los que se sugiere un producto distinto."/>
+                <Card title="En revisión" value={cuRev} className="min-h-[104px]" explain="Casos que están siendo analizados por IA/operaciones."/>
+                <Card title="Pend. docs prom." value={(data?.totals?.missing_avg || 0).toFixed(1)} className="min-h-[104px]" explain="Promedio de documentos faltantes por caso."/>
             </div>
 
             {/* Funnel */}
@@ -496,10 +453,7 @@ export default function BamOpsPanel() {
                                     <span>{v} · {pct}%</span>
                                 </div>
                                 <div className="h-2 bg-white border rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full bg-bami-yellow"
-                                        style={{ width: `${pct}%`, transition: `width 700ms ${EASE}` }}
-                                    />
+                                    <div className="h-full bg-bami-yellow" style={{ width: `${pct}%`, transition: `width 700ms ${EASE}` }} />
                                 </div>
                             </div>
                         )
@@ -512,7 +466,7 @@ export default function BamOpsPanel() {
                 )}
             </div>
 
-            {/* Distribuciones adicionales */}
+            {/* Distribuciones */}
             <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-3">
                 <div className="p-4 bg-gray-50 rounded-xl">
                     <div className="font-semibold mb-2">Leads por producto</div>
@@ -543,7 +497,7 @@ export default function BamOpsPanel() {
                 </div>
             </div>
 
-            {/* Leads recientes (tabla) */}
+            {/* Leads recientes */}
             <div className="mt-6">
                 <div className="font-semibold mb-2">Leads recientes</div>
                 {showExplain && <div className="text-[11px] text-gray-500 mb-2">Lista compacta de los últimos leads generados y su etapa actual.</div>}

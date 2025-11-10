@@ -40,7 +40,6 @@ export default function RequestForm({ product, onCreated }) {
         notify('Datos recibidos. Requisitos generados según producto.')
 
         setTimeout(() => {
-            // eventos de UI (no simulador)
             window.dispatchEvent(new Event('ui:open'))
             window.dispatchEvent(new Event('ui:upload'))
             window.dispatchEvent(new Event('ui:tracker:open'))
@@ -90,7 +89,7 @@ export default function RequestForm({ product, onCreated }) {
 
             <div className="md:col-span-2 mt-1 sm:mt-2 p-3 sm:p-4 bg-gray-50 rounded-xl">
                 <div className="flex flex-wrap gap-2">
-                <div className="text-sm font-semibold mb-2">Requisitos para {p}</div>
+                    <div className="text-sm font-semibold mb-2">Requisitos para {p}</div>
                     {requiredDocs.map((r) => (
                         <span key={r} className="px-2 py-1 rounded-full text-xs bg-white border capitalize">
               {r.replaceAll('_', ' ')}

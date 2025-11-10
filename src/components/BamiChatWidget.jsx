@@ -191,7 +191,7 @@ export default function BamiChatWidget({
         const callAdvisor = ()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true); connectAdvisor() }
         const pushMsg = (e)=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true); push(e.detail?.role||'bami', e.detail?.text||'') }
 
-        const prefixes = embed ? ['sim'] : ['ui','bami','sim'] // añadimos 'sim' también para el chat desktop cuando el sim está abierto
+        const prefixes = embed ? ['sim'] : ['ui','bami','sim']
         const allEvents = [
             ['open', openChat],
             ['upload', openUpload],
@@ -341,7 +341,7 @@ export default function BamiChatWidget({
     function localWarmupReply(userText=''){
         const {action,product}=parseIntent(userText)
         if(action==='create_case' && product){ return `Puedo abrir tu expediente para **${product}** desde aquí. ¿Confirmas que iniciemos ahora? Escribe **"nuevo"** o **"sí"**.` }
-        if(action==='ask_requirements'){ const p=product || 'Tarjeta de Crédito'; const req=PRODUCT_RULES[p]?.map(r=>r.replaceAll('_',' ')).join(', ') || 'requisitos básicos'; return `Para **${p}** se requiere: ${req}. Si gustas, puedo abrir tu expediente; dime “aplicar a ${p}”.` }
+        if(action==='ask_requirements'){ const p=product || 'Tarjeta de Crédito'; const req=PRODUCT_RULES[p]?.map(r=>r.replaceAll('_', ' ')).join(', ') || 'requisitos básicos'; return `Para **${p}** se requiere: ${req}. Si gustas, puedo abrir tu expediente; dime “aplicar a ${p}”.` }
         if(action==='ask_times') return 'El tiempo típico de análisis es **8–24h hábiles**, sujeto a carga y validaciones.'
         if(action==='advisor') return 'Puedo conectarte con un asesor humano en cualquier momento. Escribe **asesor** para iniciar.'
         return ['Puedo crear tu expediente, mostrar **requisitos** y **tiempos**, abrir **subida de documentos** o conectarte con un **asesor**.','¿Qué deseas hacer?'].join('\n')
@@ -377,7 +377,6 @@ export default function BamiChatWidget({
                     { label: 'Ver tracker', value: 'tracker' },
                 ]
             })
-            // Abrir upload/trackers ÚNICAMENTE en el destino correcto
             window.dispatchEvent(ev('upload'))
             window.dispatchEvent(ev('tracker:open'))
         },150)
@@ -626,7 +625,6 @@ export default function BamiChatWidget({
     if(variant==='fullscreen' || variant==='app'){
         return (<>
             <div className="rounded-none sm:rounded-none overflow-hidden h-full">{ChatWindow}</div>
-            {/* IMPORTANTE: context='phone' cuando embed=true para que el modal renderice DENTRO del simulador */}
             <UploadAssistant open={showUpload} onClose={()=>setShowUpload(false)} onUploaded={afterUpload} context={embed?'phone':'overlay'}/>
         </>)
     }

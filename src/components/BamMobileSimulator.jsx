@@ -126,13 +126,8 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
                 overflowAnchor: 'none'
             }}
         >
-            {/* notch */}
             <div className="absolute top-0 left-0 right-0 h-7 bg-black z-[1]" />
-            {/* pantalla */}
-            <div
-                className="absolute inset-0 pt-7 flex flex-col"
-                style={{ backgroundColor: BG, isolation: 'isolate' }}
-            >
+            <div className="absolute inset-0 pt-7 flex flex-col" style={{ backgroundColor: BG, isolation: 'isolate' }}>
                 {children}
             </div>
         </div>
@@ -206,7 +201,6 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
         )
     }
 
-    /** Pestañas **/
     const Transferir = () => (
         <>
             <SectionTitle>Transferir</SectionTitle>
@@ -285,11 +279,9 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
         </>
     )
 
-    /** Modales internos (dentro del teléfono) **/
     const InternalModal = ({ title, onClose, children }) => {
         const safeClose = () => {
-            // Permitir cierre SIEMPRE al final del autopilot (no bloquear indefinidamente)
-            if (window.__BAMI_AGENT_ACTIVE__) return // autopilot en curso: no permitir cerrar manualmente
+            if (window.__BAMI_AGENT_ACTIVE__) return
             onClose?.()
         }
         const modalMaxH = Math.max(280, Math.floor(shellSize.h * 0.78))
@@ -297,10 +289,7 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
             <div className="absolute inset-0 z-[45]">
                 <div className="absolute inset-0 bg-black/60" onClick={safeClose} />
                 <div className="absolute left-1/2 -translate-x-1/2 top-4 w-[94%]">
-                    <div
-                        className="rounded-2xl overflow-hidden"
-                        style={{ backgroundColor: '#ffffff', color: '#111', border: '1px solid #e5e7eb' }}
-                    >
+                    <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#ffffff', color: '#111', border: '1px solid #e5e7eb' }}>
                         <div className="h-12 px-3 flex items-center justify-between border-b bg-gray-50">
                             <div className="text-sm font-semibold">{title}</div>
                             <button onClick={safeClose} className="p-1.5 rounded hover:bg-gray-200" aria-label="Cerrar">
@@ -316,23 +305,13 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
         )
     }
 
-    /** Contenido principal **/
     const ScreenContent = () => {
         if (tab === 'gestionar' && screen === 'bami-chat') {
             return (
                 <>
                     <AppHeader title="Bam" showBack onBack={() => setScreen('root')} />
                     <div className="relative flex-1 overflow-hidden" style={{ backgroundColor: '#ffffff', color: '#000000' }}>
-                        {/* Chat ocupa 100% del alto del teléfono */}
-                        <div
-                            className="absolute inset-0"
-                            style={{
-                                contain: 'layout paint size',
-                                willChange: 'transform',
-                                transform: 'translateZ(0)'
-                            }}
-                        >
-                            {/* embed => los modales (UploadAssistant) viven DENTRO del teléfono */}
+                        <div className="absolute inset-0" style={{ contain: 'layout paint size', willChange: 'transform', transform: 'translateZ(0)' }}>
                             <BamiChatWidget variant="app" disableFloatingTrigger embed />
                         </div>
 
@@ -352,7 +331,6 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
             )
         }
 
-        // Resto de pantallas con barra de pestañas
         return (
             <>
                 <AppHeader title="Bam" />
@@ -364,7 +342,6 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
                     {tab === 'mas' && <Mas />}
                 </div>
 
-                {/* Barra de pestañas */}
                 <div className="shrink-0 grid grid-cols-5 z-[10]" style={{ backgroundColor: BG }}>
                     <TabBtn id="inicio" icon={Home} label="Inicio" />
                     <TabBtn id="transferir" icon={SendIcon} label="Transferir" />
@@ -378,27 +355,20 @@ export default function BamMobileSimulator({ open = false, onClose = () => {} })
 
     return (
         <div className="fixed inset-0 z-[4000] bg-black/55 backdrop-blur-sm">
-            {/* Botón cerrar */}
             <button
-                onClick={() => {
-                    // Durante autopilot no permitimos cierre manual; al final se cierra solo
-                    if (window.__BAMI_AGENT_ACTIVE__) return
-                    onClose()
-                }}
+                onClick={() => { if (window.__BAMI_AGENT_ACTIVE__) return; onClose() }}
                 className="fixed top-4 right-4 z-[4010] px-3 py-1.5 rounded-lg text-sm bg-white text-black hover:bg-gray-100 shadow"
                 aria-label="Cerrar vista app"
             >
                 Cerrar
             </button>
 
-            {/* Centro */}
             <div className="h-full w-full grid place-items-center p-4">
                 <PhoneShell>
                     <ScreenContent />
                 </PhoneShell>
             </div>
 
-            {/* leyenda */}
             <div className="absolute bottom-4 left-0 right-0 px-4 text-center text-white/85 text-sm z-[4001] pointer-events-none">
                 Vista simulada de la app BAM — navega por las pestañas y abre “Asistente BAMI”.
             </div>

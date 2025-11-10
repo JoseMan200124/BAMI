@@ -55,13 +55,11 @@ export default function BamiHub() {
         const onFormOpen = () => setShowForm(true)
 
         const onSimOpen = () => {
-            // Si abro el simulador, cierro overlays de escritorio y enfoco “Cliente”
             ensureClientFocus()
         }
         const onSimClose = () => setShowMobile(false)
 
         const onCloseAll = () => {
-            // Cierra TODO
             setShowTracker(false)
             setShowForm(false)
             setShowMobile(false)
@@ -139,7 +137,6 @@ export default function BamiHub() {
         if (c.stage !== 'aprobado')
             return { id: 'validate', label: 'Validar con IA', action: () => validateEverywhere() }
         return { id: 'advisor', label: 'Hablar con asesor', action: () => advisorEverywhere() }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [c, product, showMobile])
 
     // Dos columnas desktop

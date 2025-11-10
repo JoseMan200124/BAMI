@@ -35,20 +35,21 @@ export default function UploadAssistant({ open, onClose, onUploaded, context = '
     useEffect(() => {
         if (!open) return
 
-        const closeAll = () => onClose?.()
+        const closeAll = () => {
+            // Evita cierre manual durante autopilot si es overlay de simulador
+            if (window.__BAMI_AGENT_ACTIVE__) return
+            onClose?.()
+        }
 
         const demo = async () => {
-            // simula arrastre
             setDragOver(true)
             await new Promise(r => setTimeout(r, 650))
             setDragOver(false)
 
-            // simula “subiendo…”
             setUploading(true)
             setError('')
             await new Promise(r => setTimeout(r, 900))
 
-            // “enviados N archivos”
             const n = 2 + Math.floor(Math.random() * 3)
             setUploading(false)
             setSentCount(n)
@@ -90,7 +91,7 @@ export default function UploadAssistant({ open, onClose, onUploaded, context = '
             fd.append('id', caseId)
             files.forEach((f) => fd.append('files', f, f.name))
 
-            await api.uploadDocumentsForm(fd) // backend inicia lectura + validación
+            await api.uploadDocumentsForm(fd)
             setSentCount(files.length)
             await refreshTracker()
             onUploaded?.()
@@ -110,15 +111,12 @@ export default function UploadAssistant({ open, onClose, onUploaded, context = '
         doUpload(e.dataTransfer.files)
     }
 
-    const wrapperClass =
-        context === 'phone'
-            ? 'absolute inset-0 z-[46]'
-            : 'fixed inset-0 z-[80]'
+    const wrapperClass = context === 'phone' ? 'absolute inset-0 z-[46]' : 'fixed inset-0 z-[80]'
 
     const Backdrop = () => (
         <div
             className="absolute inset-0 bg-black/50"
-            onClick={onClose}
+            onClick={() => { if (!window.__BAMI_AGENT_ACTIVE__) onClose?.() }}
             aria-hidden
         />
     )
@@ -133,7 +131,7 @@ export default function UploadAssistant({ open, onClose, onUploaded, context = '
                             <FileText size={16} /> Subir documentos
                         </div>
                         <button
-                            onClick={onClose}
+                            onClick={() => { if (!window.__BAMI_AGENT_ACTIVE__) onClose?.() }}
                             className="p-2 rounded-md hover:bg-gray-200"
                             aria-label="Cerrar"
                         >
@@ -181,7 +179,7 @@ export default function UploadAssistant({ open, onClose, onUploaded, context = '
                         </div>
 
                         <div className="mt-3 sm:mt-4 text-xs text-gray-600">
-                            Al subir, **leeré y validaré automáticamente** con IA (no hace falta confirmar).
+                            Al subir, <b>leeré y validaré automáticamente</b> con IA (no hace falta confirmar).
                             Verás el progreso y observaciones en el chat.
                         </div>
 
