@@ -653,26 +653,6 @@ export default function BamiChatWidget({
         <>
             {BrandStyles}
 
-            {/* Dock grande */}
-            <button
-                onClick={()=>setOpen(v=>!v)}
-                aria-label={open ? 'Cerrar chat BAMI' : 'Abrir chat BAMI'}
-                aria-expanded={open}
-                className="fixed z-[60] group"
-                style={{ right: rightOffset, bottom: bottomOffset, width: DOCK.size, height: DOCK.size }}
-            >
-                <span className="absolute inset-0 bami-dock-glow" aria-hidden />
-                <span className="relative w-full h-full grid place-items-center rounded-full bg-gradient-to-tr from-amber-300 to-yellow-500 p-[3px] shadow-xl border border-yellow-200/70">
-          <span className="relative w-full h-full rounded-full bg-white grid place-items-center overflow-hidden">
-            <span className="absolute inset-0 rounded-full blur-2xl opacity-25 bg-amber-200" aria-hidden />
-            <img src="/BAMI.svg" alt="" className="relative w-[70%] h-[70%] object-contain" draggable={false}/>
-            <span className="bami-dock-pulse" aria-hidden />
-            <span className="absolute right-1.5 bottom-1.5 w-3.5 h-3.5 rounded-full bg-emerald-500 ring-2 ring-white" aria-hidden />
-          </span>
-        </span>
-                <span className="sr-only">Chat con BAMI</span>
-            </button>
-
             {/* Ventana emergente */}
             {open && (
                 <div
