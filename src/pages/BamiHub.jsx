@@ -50,6 +50,14 @@ export default function BamiHub() {
             window.dispatchEvent(new Event('sim:ops:close'))
         }
 
+        // 🔹 NUEVO: cuando el agente inicia el flujo de cliente en chat,
+        // forzamos a que el área Cliente quede visible.
+        const onEnsureClientVisible = () => {
+            // si estás en 'ops', cambiamos a 'client' para que el chat sea protagonista;
+            // si estás en 'both', lo dejamos igual.
+            setViewMode((prev) => (prev === 'ops' ? 'client' : prev))
+        }
+
         window.addEventListener('bami:caseUpdate', onU)
         window.addEventListener('ui:tracker:open', onTrackerOpen)
         window.addEventListener('ui:tracker:toggle', onTrackerToggle)
@@ -57,6 +65,7 @@ export default function BamiHub() {
         window.addEventListener('ui:form:open', onFormOpen)
         window.addEventListener('ui:sim:close', onSimClose)
         window.addEventListener('ui:closeAll', onCloseAll)
+        window.addEventListener('bami:clientflow:ensureClientVisible', onEnsureClientVisible)
 
         return () => {
             window.removeEventListener('bami:caseUpdate', onU)
@@ -66,6 +75,7 @@ export default function BamiHub() {
             window.removeEventListener('ui:form:open', onFormOpen)
             window.removeEventListener('ui:sim:close', onSimClose)
             window.removeEventListener('ui:closeAll', onCloseAll)
+            window.removeEventListener('bami:clientflow:ensureClientVisible', onEnsureClientVisible)
         }
     }, [])
 
