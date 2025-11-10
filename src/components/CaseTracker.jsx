@@ -1,6 +1,6 @@
 // src/components/CaseTracker.jsx
-// Fuerza avance en modo agente, anima suave la línea de tiempo, y coopera con el orquestador.
-// Ahora respeta __BAMI_SUPPRESS_SIM_TRACKER__ para NO abrir el tracker dentro del simulador durante Autopilot.
+// Fuerza avance en modo agente, anima suave la línea de tiempo y coopera con el orquestador.
+// Respeta __BAMI_SUPPRESS_SIM_TRACKER__ para NO abrir el tracker dentro del simulador durante Autopilot.
 
 import React, { useEffect, useRef, useState } from 'react'
 import { getCase, refreshTracker } from '../lib/caseStore.js'
@@ -73,12 +73,11 @@ export default function CaseTracker({ active = true }) {
                 timeline: [...(now.timeline || []), entry],
             }
             window.dispatchEvent(new CustomEvent('bami:caseUpdate', { detail: next }))
-            // Señal útil para OPS o HUD
             window.dispatchEvent(new CustomEvent('bami:tracker:stageChange', { detail: entry }))
         } catch {}
     }
 
-    // ⏱️ Secuencia más lenta y suave
+    // Secuencia lenta/suave
     const stagesSequence = [
         { stage: 'requiere',    percent: 10,  delay: 1400, missing: ['dpi', 'selfie', 'comprobante_domicilio'], log: 'Expediente iniciado.' },
         { stage: 'recibido',    percent: 35,  delay: 1900, missing: ['selfie', 'comprobante_domicilio'],        log: 'Recepción confirmada.' },
@@ -115,16 +114,11 @@ export default function CaseTracker({ active = true }) {
     // Arranque de demo cuando el orquestador la pida
     useEffect(() => {
         const start = () => {
-            // abre el tracker robustamente en UI de escritorio
             try {
                 window.dispatchEvent(new Event('ui:tracker:open'))
-                // Si Autopilot está activo o hay supresión, NO abrir tracker dentro del simulador
                 const suppressSim = !!window.__BAMI_SUPPRESS_SIM_TRACKER__ || !!window.__BAMI_AGENT_ACTIVE__
-                if (!suppressSim) {
-                    window.dispatchEvent(new Event('sim:tracker:open'))
-                } else {
-                    window.dispatchEvent(new Event('sim:tracker:close'))
-                }
+                if (!suppressSim) window.dispatchEvent(new Event('sim:tracker:open'))
+                else window.dispatchEvent(new Event('sim:tracker:close'))
             } catch {}
 
             const current = (getCase() || {}).stage || 'requiere'
@@ -142,7 +136,6 @@ export default function CaseTracker({ active = true }) {
         window.addEventListener('bami:agent:start', start)
         window.addEventListener('bami:sim:stop', stop)
 
-        // Safety: si ya está abierto el modal al montar, arrancamos
         setTimeout(() => {
             const txt = (document.querySelector('[role="dialog"], [data-modal], .modal, .DialogContent')?.innerText || '').toLowerCase()
             if (txt.includes('seguimiento del expediente')) start()

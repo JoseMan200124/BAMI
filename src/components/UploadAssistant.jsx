@@ -11,7 +11,7 @@ import { getCase, refreshTracker, notify } from '../lib/caseStore.js'
  *  - onUploaded: () => Promise<void> | void
  *  - context: 'overlay' | 'phone'
  *
- * Ahora soporta:
+ * Soporta:
  *  - Eventos '...:upload:close' para cerrar desde fuera.
  *  - Evento '...:upload:demo' para simular drag&drop + subida (modo Autopilot).
  */
@@ -38,17 +38,14 @@ export default function UploadAssistant({ open, onClose, onUploaded, context = '
         const closeAll = () => onClose?.()
 
         const demo = async () => {
-            // simula arrastre
             setDragOver(true)
             await new Promise(r => setTimeout(r, 650))
             setDragOver(false)
 
-            // simula “subiendo…”
             setUploading(true)
             setError('')
             await new Promise(r => setTimeout(r, 900))
 
-            // “enviados N archivos”
             const n = 2 + Math.floor(Math.random() * 3)
             setUploading(false)
             setSentCount(n)
@@ -90,7 +87,7 @@ export default function UploadAssistant({ open, onClose, onUploaded, context = '
             fd.append('id', caseId)
             files.forEach((f) => fd.append('files', f, f.name))
 
-            await api.uploadDocumentsForm(fd) // backend inicia lectura + validación
+            await api.uploadDocumentsForm(fd)
             setSentCount(files.length)
             await refreshTracker()
             onUploaded?.()
@@ -110,17 +107,10 @@ export default function UploadAssistant({ open, onClose, onUploaded, context = '
         doUpload(e.dataTransfer.files)
     }
 
-    const wrapperClass =
-        context === 'phone'
-            ? 'absolute inset-0 z-[46]'
-            : 'fixed inset-0 z-[80]'
+    const wrapperClass = context === 'phone' ? 'absolute inset-0 z-[46]' : 'fixed inset-0 z-[80]'
 
     const Backdrop = () => (
-        <div
-            className="absolute inset-0 bg-black/50"
-            onClick={onClose}
-            aria-hidden
-        />
+        <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden />
     )
 
     return (
@@ -132,11 +122,7 @@ export default function UploadAssistant({ open, onClose, onUploaded, context = '
                         <div className="text-sm sm:text-base font-semibold flex items-center gap-2">
                             <FileText size={16} /> Subir documentos
                         </div>
-                        <button
-                            onClick={onClose}
-                            className="p-2 rounded-md hover:bg-gray-200"
-                            aria-label="Cerrar"
-                        >
+                        <button onClick={onClose} className="p-2 rounded-md hover:bg-gray-200" aria-label="Cerrar">
                             <X size={16} />
                         </button>
                     </div>
@@ -161,11 +147,7 @@ export default function UploadAssistant({ open, onClose, onUploaded, context = '
                                     o selecciona desde tu dispositivo
                                 </div>
                                 <div className="mt-2">
-                                    <button
-                                        type="button"
-                                        className="btn btn-dark btn-sm"
-                                        onClick={() => inputRef.current?.click()}
-                                    >
+                                    <button type="button" className="btn btn-dark btn-sm" onClick={() => inputRef.current?.click()}>
                                         Elegir archivos
                                     </button>
                                     <input
@@ -181,7 +163,7 @@ export default function UploadAssistant({ open, onClose, onUploaded, context = '
                         </div>
 
                         <div className="mt-3 sm:mt-4 text-xs text-gray-600">
-                            Al subir, **leeré y validaré automáticamente** con IA (no hace falta confirmar).
+                            Al subir, <b>leeré y validaré automáticamente</b> con IA (no hace falta confirmar).
                             Verás el progreso y observaciones en el chat.
                         </div>
 

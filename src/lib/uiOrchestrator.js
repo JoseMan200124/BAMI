@@ -1,17 +1,11 @@
 // src/lib/uiOrchestrator.js
 // Orquestador del Agente SIN cursor circular y SIN ocultar el cursor nativo.
-// - Se eliminó el círculo celeste por completo.
-// - Nunca se oculta el cursor real del sistema.
-// - El Tracker se abre durante el flujo (si aplica) y se CIERRA al finalizar,
-//   evitando que se reabra automáticamente (se desactiva el lock antes de cerrarlo).
+// Cierra overlays molestos antes de abrir el tracker y evita reaperturas accidentales.
 
 (function () {
     if (window.__BAMI_UI_ORCH_READY__) return
     window.__BAMI_UI_ORCH_READY__ = true
 
-    // -------------------------------------------------------
-    // Utilidades
-    // -------------------------------------------------------
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
     const norm = (t) => (t || '').toLowerCase().replace(/\s+/g, ' ').trim()
 
@@ -24,11 +18,9 @@
     }
 
     const qAllClickables = () =>
-        Array.from(
-            document.querySelectorAll(
-                'button, a, [role="button"], [data-bami-open], [data-testid], .btn, .MuiButton-root, .ant-btn'
-            )
-        )
+        Array.from(document.querySelectorAll(
+            'button, a, [role="button"], [data-bami-open], [data-testid], .btn, .MuiButton-root, .ant-btn'
+        ))
 
     function findByText(candidates) {
         const wanted = candidates.map(norm)
@@ -55,47 +47,24 @@
         return null
     }
 
-    // -------------------------------------------------------
-    // (Sin cursor circular) — helpers de click/posicion opcionales
-    // -------------------------------------------------------
+    // (cursor invisible — solo timing)
     let lastMouse = { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) }
-    window.addEventListener(
-        'mousemove',
-        (e) => {
-            lastMouse = { x: e.clientX, y: e.clientY }
-        },
-        { passive: true }
-    )
+    window.addEventListener('mousemove', (e) => { lastMouse = { x: e.clientX, y: e.clientY } }, { passive: true })
 
-    async function moveCursorTo(x, y, duration = 200) {
-        // No hay indicador visual; solo esperamos para simular el timing del flujo.
-        await sleep(duration)
-    }
-
+    async function moveCursorTo(x, y, duration = 200) { await sleep(duration) }
     async function clickAt(x, y, targetEl = null) {
         await moveCursorTo(x, y, 160)
         try {
             const el = targetEl || document.elementFromPoint(x ?? lastMouse.x, y ?? lastMouse.y)
             if (el) {
                 for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click']) {
-                    el.dispatchEvent(
-                        new MouseEvent(type, {
-                            bubbles: true,
-                            cancelable: true,
-                            view: window,
-                            clientX: x ?? lastMouse.x,
-                            clientY: y ?? lastMouse.y
-                        })
-                    )
+                    el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window, clientX: x ?? lastMouse.x, clientY: y ?? lastMouse.y }))
                 }
                 el.focus?.()
             }
         } catch {}
     }
 
-    // -------------------------------------------------------
-    // Cierre de overlays que estorban (excluye el tracker)
-    // -------------------------------------------------------
     function closeFloatersExceptTracker() {
         const tracker = findTrackerContainer()
         const floats = Array.from(
@@ -106,15 +75,8 @@
         for (const f of floats) {
             if (tracker && (tracker === f || f.contains(tracker))) continue
             if (!isVisible(f)) continue
-            const btn = f.querySelector(
-                '[data-close],[data-dismiss],[aria-label="Cerrar"],[aria-label="Close"],.btn-close,button.close'
-            )
-            if (btn) {
-                try {
-                    btn.click()
-                    continue
-                } catch {}
-            }
+            const btn = f.querySelector('[data-close],[data-dismiss],[aria-label="Cerrar"],[aria-label="Close"],.btn-close,button.close')
+            if (btn) { try { btn.click(); continue } catch {} }
             const cs = getComputedStyle(f)
             if (cs.display !== 'none') {
                 f.style.setProperty('display', 'none', 'important')
@@ -124,27 +86,16 @@
         }
     }
 
-    // -------------------------------------------------------
-    // Abrir / Cerrar Tracker y “lock” (para evitar reapertura involuntaria)
-    // -------------------------------------------------------
     let trackerLock = false
     let trackerObserver = null
-
     function setTrackerLock(on) {
         trackerLock = !!on
-        if (!on) {
-            trackerObserver?.disconnect?.()
-            trackerObserver = null
-            return
-        }
+        if (!on) { trackerObserver?.disconnect?.(); trackerObserver = null; return }
         const root = document.body
         trackerObserver = new MutationObserver(() => {
             if (!trackerLock) return
-            // Si desaparece el tracker estando activo el lock, se intenta reabrir.
             const exists = !!findTrackerContainer()
-            if (!exists) {
-                openTracker(true).catch(() => {})
-            }
+            if (!exists) { openTracker(true).catch(() => {}) }
         })
         trackerObserver.observe(root, { childList: true, subtree: true })
     }
@@ -153,10 +104,8 @@
         closeFloatersExceptTracker()
         if (findTrackerContainer()) return true
 
-        const btn =
-            document.querySelector('[data-bami-open="tracker"], [data-testid="open-tracker"]') ||
+        const btn = document.querySelector('[data-bami-open="tracker"], [data-testid="open-tracker"]') ||
             findByText(['abrir tracker', 'seguimiento del expediente', 'tracker'])
-
         const tab = findByText(['tracker'])
         const target = btn || tab
 
@@ -165,26 +114,17 @@
                 const r = target.getBoundingClientRect()
                 await clickAt(r.left + r.width / 2, r.top + r.height / 2, target)
             } else {
-                try {
-                    target.click?.()
-                } catch {}
+                try { target.click?.() } catch {}
             }
             await sleep(200)
         } else {
-            try {
-                window.dispatchEvent(new Event('bami:ui:openTracker'))
-            } catch {}
+            try { window.dispatchEvent(new Event('bami:ui:openTracker')) } catch {}
             await sleep(260)
         }
 
         if (!findTrackerContainer()) {
             const again = findByText(['abrir tracker', 'seguimiento del expediente', 'tracker'])
-            if (again) {
-                try {
-                    again.click?.()
-                } catch {}
-                await sleep(220)
-            }
+            if (again) { try { again.click?.() } catch {}; await sleep(220) }
         }
         return !!findTrackerContainer()
     }
@@ -192,83 +132,44 @@
     async function closeTracker() {
         const tracker = findTrackerContainer()
         if (!tracker) return false
-        // Buscar botón de cerrar
-        const closeBtn =
-            tracker.querySelector(
-                '[aria-label="Cerrar"], [aria-label="Close"], [data-close], [data-dismiss], .btn-close, button.close'
-            ) || findByText(['cerrar'])
-        if (closeBtn) {
-            try {
-                closeBtn.click()
-                await sleep(150)
-                return !findTrackerContainer()
-            } catch {}
-        }
-        // Fallback: ocultarlo agresivamente
-        try {
-            tracker.style.setProperty('display', 'none', 'important')
-            tracker.style.setProperty('visibility', 'hidden', 'important')
-        } catch {}
+        const closeBtn = tracker.querySelector('[aria-label="Cerrar"], [aria-label="Close"], [data-close], [data-dismiss], .btn-close, button.close') || findByText(['cerrar'])
+        if (closeBtn) { try { closeBtn.click(); await sleep(150); return !findTrackerContainer() } catch {} }
+        try { tracker.style.setProperty('display', 'none', 'important'); tracker.style.setProperty('visibility', 'hidden', 'important') } catch {}
         await sleep(60)
         return !findTrackerContainer()
     }
 
-    // -------------------------------------------------------
-    // Escenario del Agente (Autopilot)
-    // -------------------------------------------------------
     async function runAgentScenario() {
         window.__BAMI_AGENT_ACTIVE__ = true
-
-        // 1) Abrir tracker y fijarlo durante el flujo (si existe)
         await openTracker(true)
         setTrackerLock(true)
 
-        // 2) Disparar simulación del tracker (avance de etapas)
-        for (let i = 0; i < 3; i++) {
-            try {
-                window.dispatchEvent(new Event('bami:sim:runTracker'))
-            } catch {}
-            await sleep(240)
-        }
+        for (let i = 0; i < 3; i++) { try { window.dispatchEvent(new Event('bami:sim:runTracker')) } catch {}; await sleep(240) }
 
-        // 3) Simulación de subida de documentos (si existe botón)
-        const uploadBtn =
-            document.querySelector('[data-bami-upload-sim]') ||
-            findByText(['subir documentos (sim)', 'subir documentos', 'simular subida'])
+        // (opcional) simulación de subida si existe botón dedicado en UI (no forzamos global)
+        const uploadBtn = document.querySelector('[data-bami-upload-sim]') || findByText(['subir documentos (sim)', 'subir documentos', 'simular subida'])
         if (uploadBtn) {
             const r = uploadBtn.getBoundingClientRect()
             await clickAt(r.left + r.width / 2, r.top + r.height / 2, uploadBtn)
             await sleep(360)
-            try {
-                window.dispatchEvent(new Event('bami:sim:runTracker'))
-            } catch {}
+            try { window.dispatchEvent(new Event('bami:sim:runTracker')) } catch {}
         }
 
-        // 4) FIN del flujo: desactivar lock y CERRAR tracker (no debe quedar abierto).
         setTrackerLock(false)
         await closeTracker()
     }
 
     function stopAgentScenario() {
         window.__BAMI_AGENT_ACTIVE__ = false
-        // Asegurar que no se reabra: primero quitamos lock y luego cerramos.
         setTrackerLock(false)
         closeTracker()
     }
 
-    // -------------------------------------------------------
-    // Enganches de eventos públicos
-    // -------------------------------------------------------
     window.addEventListener('bami:agent:start', runAgentScenario)
     window.addEventListener('bami:agent:stop', stopAgentScenario)
-    window.addEventListener('bami:agent:openTracker', () => {
-        openTracker(true)
-    })
-    window.addEventListener('bami:agent:showTracker', () => {
-        openTracker(true)
-    })
+    window.addEventListener('bami:agent:openTracker', () => { openTracker(true) })
+    window.addEventListener('bami:agent:showTracker', () => { openTracker(true) })
 
-    // API útil para consola/desarrollo
     window.BAMI = Object.assign(window.BAMI || {}, {
         openTracker,
         closeTracker,

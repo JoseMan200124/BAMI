@@ -14,7 +14,6 @@ const EASE = 'cubic-bezier(0.22,1,0.36,1)'
 
 export default function StageTimeline({ stage = 'requiere', history = [], timeline = [] }) {
     const idx = STAGES.findIndex((s) => s.key === stage)
-    // Compatibilidad: soporta {at,stage,note} y también {ts,type,text}
     const items = (timeline && timeline.length
         ? timeline.map(t => ({
             at:   t.at   ?? t.ts   ?? Date.now(),
@@ -30,14 +29,11 @@ export default function StageTimeline({ stage = 'requiere', history = [], timeli
                 <div className="absolute left-0 right-0 top-6 h-1 bg-gray-200 rounded-full"></div>
                 <div
                     className="absolute left-0 top-6 h-1 bg-bami-yellow rounded-full"
-                    style={{
-                        width: `${widthPct}%`,
-                        transition: `width 1200ms ${EASE}`
-                    }}
+                    style={{ width: `${widthPct}%`, transition: `width 1200ms ${EASE}` }}
                     aria-hidden
                 />
 
-                {/* Mobile: lista horizontal desplazable */}
+                {/* Mobile: lista horizontal */}
                 <div className="overflow-x-auto no-scrollbar">
                     <div className="min-w-max flex gap-3 sm:grid sm:grid-cols-5 sm:gap-2 pr-2">
                         {STAGES.map((s, i) => {
@@ -53,10 +49,7 @@ export default function StageTimeline({ stage = 'requiere', history = [], timeli
                             return (
                                 <div key={s.key} className="flex flex-col items-center w-16 sm:w-auto">
                                     <div
-                                        className={[
-                                            'w-10 h-10 grid place-items-center rounded-full border text-gray-700 shrink-0',
-                                            ring
-                                        ].join(' ')}
+                                        className={['w-10 h-10 grid place-items-center rounded-full border text-gray-700 shrink-0', ring].join(' ')}
                                         title={s.hint}
                                         style={{
                                             transform: isActive ? 'scale(1.06)' : (isDone ? 'scale(1.02)' : 'scale(1)'),

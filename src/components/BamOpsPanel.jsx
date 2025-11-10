@@ -2,12 +2,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/apiClient'
 import ProgressRing from './ProgressRing.jsx'
-import { Clock, CheckCircle2, BarChart3, Star, TrendingUp, Info } from 'lucide-react'
+import { Clock, CheckCircle2, BarChart3, Star, Info } from 'lucide-react'
 
 const TOKEN_KEY = 'bami_admin_token'
 const EASE = 'cubic-bezier(0.22,1,0.36,1)'
 
-/* ------------------------------ UI helpers ------------------------------ */
 function Card({ title, value, hint, children, className = '', explain }) {
     return (
         <div className={`p-4 rounded-2xl border bg-white ${className}`}>
@@ -23,22 +22,6 @@ function Card({ title, value, hint, children, className = '', explain }) {
             {hint && <div className="text-xs text-gray-500 mt-1">{hint}</div>}
             {children}
         </div>
-    )
-}
-
-function Pill({ children, color = 'default' }) {
-    const colorMap = {
-        default: 'bg-gray-100 text-gray-700 border-gray-200',
-        requiere: 'bg-gray-100 text-gray-700 border-gray-200',
-        recibido: 'bg-yellow-50 text-yellow-800 border-yellow-200',
-        en_revision: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-        aprobado: 'bg-blue-50 text-blue-800 border-blue-200',
-        alternativa: 'bg-violet-50 text-violet-800 border-violet-200',
-    }
-    return (
-        <span className={'px-2 py-0.5 rounded-full text-xs border ' + (colorMap[color] || colorMap.default)}>
-      {children}
-    </span>
     )
 }
 
@@ -104,7 +87,6 @@ function fmtMinutesToHM(min) {
     return h > 0 ? `${h}h ${mm}m` : `${mm}m`
 }
 
-// Animación simple de conteo
 function useCountUp(target = 0, duration = 800) {
     const [val, setVal] = useState(0)
     const rafRef = useRef(null)
@@ -127,9 +109,7 @@ function useCountUp(target = 0, duration = 800) {
     return val
 }
 
-/* ------------------------------ Demo data ------------------------------ */
 function buildDemoData() {
-    // números coherentes y “llenos”
     const total = 260
     const recibido = 104
     const en_revision = 74
@@ -156,33 +136,21 @@ function buildDemoData() {
             approval_rate: aprobado / Math.max(1, total),
             missing_avg: 1.2,
             avg_response_minutes: 46,
-            tta_aprob_minutes: 9 * 60 + 20, // tiempo a aprobación promedio
-            nps: 58 // puntaje neto del promotor (estimado)
+            tta_aprob_minutes: 9 * 60 + 20,
+            nps: 58
         },
         funnel: { requiere, recibido, en_revision, aprobado, alternativa },
         sla: { avg_minutes: 39, p90_minutes: 78, p95_minutes: 110 },
         csat: { avg: 4.6, responses: 178, promoters: 65, passives: 25, detractors: 10 },
-        by_product: {
-            'Tarjeta de Crédito': 102,
-            'Préstamo Personal': 72,
-            'Hipoteca': 44,
-            'PyME': 42,
-        },
-        by_channel: {
-            'Web': 128,
-            'App': 72,
-            'WhatsApp': 38,
-            'Sucursal': 22
-        },
+        by_product: { 'Tarjeta de Crédito': 102, 'Préstamo Personal': 72, 'Hipoteca': 44, 'PyME': 42 },
+        by_channel: { 'Web': 128, 'App': 72, 'WhatsApp': 38, 'Sucursal': 22 },
         leads
     }
 }
 
-/* ------------------------------ Main panel ------------------------------ */
 export default function BamOpsPanel() {
-    // Autologin DEMO: nunca pedimos credenciales
     const [data, setData] = useState(null)
-    const [showExplain, setShowExplain] = useState(true) // mostrar ayudas por defecto
+    const [showExplain, setShowExplain] = useState(true)
 
     const fetchDataOnce = async () => {
         try {
@@ -190,14 +158,12 @@ export default function BamOpsPanel() {
                 localStorage.setItem(TOKEN_KEY, 'demo')
             }
             const d = await api.adminAnalytics()
-            // Si el backend responde bien, úsalo; si no, demo.
             setData(d && typeof d === 'object' ? enhance(d) : buildDemoData())
         } catch {
             setData(buildDemoData())
         }
     }
 
-    // Mejora una posible respuesta real para asegurar claves usadas
     const enhance = (d) => {
         const base = buildDemoData()
         return {
@@ -213,12 +179,8 @@ export default function BamOpsPanel() {
         }
     }
 
-    useEffect(() => {
-        // Solo una vez para evitar “flicker” y cumplir “mostrar una vez”
-        fetchDataOnce()
-    }, [])
+    useEffect(() => { fetchDataOnce() }, [])
 
-    // Ingesta del lead que crea BAMI al finalizar el flujo
     useEffect(() => {
         const ingest = (e) => {
             const detail = e?.detail || {}
@@ -236,7 +198,6 @@ export default function BamOpsPanel() {
                     created_at: Date.now()
                 }
                 const leads = [newLead, ...(d.leads || [])]
-                // Ajustar contadores coherentemente
                 const totals = { ...d.totals }
                 totals.cases = (totals.cases || 0) + 1
                 totals.aprobados = (totals.aprobados || 0) + (newLead.stage === 'aprobado' ? 1 : 0)
@@ -254,7 +215,6 @@ export default function BamOpsPanel() {
 
                 return { ...d, totals, funnel, leads, by_product, by_channel }
             })
-            // Muestra explicación al llegar el lead
             setShowExplain(true)
         }
         const toggleExplain = () => setShowExplain(v => !v)
@@ -266,7 +226,6 @@ export default function BamOpsPanel() {
         }
     }, [])
 
-    // -------- Derivados ----------
     const totals = useMemo(() => data?.totals || {}, [data])
     const funnel = useMemo(() => data?.funnel || {}, [data])
 
@@ -286,7 +245,6 @@ export default function BamOpsPanel() {
     const nps = totals?.nps ?? null
     const ttaAprobMin = totals?.tta_aprob_minutes ?? null
 
-    // Count-ups
     const cuTotal = useCountUp(totalLeads, 700)
     const cuAprob = useCountUp(totals?.aprobados || 0, 700)
     const cuAlt = useCountUp(totals?.alternativas || 0, 700)
@@ -312,74 +270,12 @@ export default function BamOpsPanel() {
                 <span className="ml-2 text-xs text-gray-500">(demo listo para presentación)</span>
             </h3>
 
-            {/* =================== Indicadores clave =================== */}
+            {/* Indicadores clave */}
             <div className="mt-2">
                 <div className="text-xs text-gray-500 mb-1">Indicadores clave</div>
 
-                {/* Móvil: carrusel horizontal */}
-                <div className="flex gap-3 overflow-x-auto sm:hidden no-scrollbar pb-1">
-                    <div className="min-w-[260px]">
-                        <Card
-                            title="Tiempo prom. de atención"
-                            value={fmtMinutesToHM(avgMinutes)}
-                            hint={avgMinutes == null ? 'Aún sin datos' : 'Desde primer contacto hasta primera atención'}
-                            explain="Tiempo promedio desde que el cliente inicia contacto hasta que recibe su primera atención."
-                            className="min-h-[132px]"
-                        >
-                            <div className="text-[11px] text-gray-500 mt-2">P90: {fmtMinutesToHM(p90)} · P95: {fmtMinutesToHM(p95)}</div>
-                        </Card>
-                    </div>
-
-                    <div className="min-w-[260px]">
-                        <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex items-center gap-3">
-                            <div className="shrink-0">
-                                <ProgressRing size={64} stroke={8} value={atendidosPct} label={`${atendidosPct}%`} />
-                            </div>
-                            <div className="min-w-0">
-                                <div className="text-xs text-gray-500 flex items-center justify-between">
-                                    <span>% Atendidos vs Generados</span>
-                                    <CheckCircle2 size={16} className="text-gray-400" />
-                                </div>
-                                <div className="text-sm font-semibold mt-1 truncate">
-                                    {atendidos}/{totalLeads} atendidos
-                                </div>
-                                <div className="text-xs text-gray-500 truncate">Leads que ya entraron al flujo</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="min-w-[260px]">
-                        <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col">
-                            <div className="flex items-center justify-between">
-                                <div className="text-xs text-gray-500">Distribución por etapa</div>
-                                <BarChart3 size={16} className="text-gray-400" />
-                            </div>
-                            <div className="mt-2">
-                                <StackedBar segments={stageSegments} />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="min-w-[260px]">
-                        <Card
-                            title="Satisfacción del cliente (CSAT)"
-                            value={csatAvg == null ? '—' : csatAvg.toFixed(1)}
-                            hint={csatAvg == null ? 'Conecta tu encuesta post-atención' : `${csatN} respuestas`}
-                            explain="Valoración promedio del servicio por parte de los clientes (escala 1–5)."
-                            className="min-h-[132px]"
-                        >
-                            <div className="mt-2 flex items-center gap-3">
-                                <Stars value={csatAvg || 0} />
-                            </div>
-                        </Card>
-                    </div>
-                </div>
-
                 {/* ≥ sm: auto-fit */}
-                <div
-                    className="hidden sm:grid gap-3"
-                    style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}
-                >
+                <div className="hidden sm:grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
                     <Card
                         title="Tiempo prom. de atención"
                         value={fmtMinutesToHM(avgMinutes)}
@@ -444,41 +340,74 @@ export default function BamOpsPanel() {
                         className="min-h-[132px]"
                     />
                 </div>
+
+                {/* Móvil (carrusel simplificado) */}
+                <div className="flex gap-3 overflow-x-auto sm:hidden no-scrollbar pb-1">
+                    <div className="min-w-[260px]">
+                        <Card
+                            title="Tiempo prom. de atención"
+                            value={fmtMinutesToHM(avgMinutes)}
+                            hint={avgMinutes == null ? 'Aún sin datos' : 'Desde primer contacto hasta primera atención'}
+                            explain="Tiempo promedio desde que el cliente inicia contacto hasta que recibe su primera atención."
+                            className="min-h-[132px]"
+                        >
+                            <div className="text-[11px] text-gray-500 mt-2">P90: {fmtMinutesToHM(p90)} · P95: {fmtMinutesToHM(p95)}</div>
+                        </Card>
+                    </div>
+
+                    <div className="min-w-[260px]">
+                        <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex items-center gap-3">
+                            <div className="shrink-0">
+                                <ProgressRing size={64} stroke={8} value={atendidosPct} label={`${atendidosPct}%`} />
+                            </div>
+                            <div className="min-w-0">
+                                <div className="text-xs text-gray-500 flex items-center justify-between">
+                                    <span>% Atendidos vs Generados</span>
+                                    <CheckCircle2 size={16} className="text-gray-400" />
+                                </div>
+                                <div className="text-sm font-semibold mt-1 truncate">
+                                    {atendidos}/{totalLeads} atendidos
+                                </div>
+                                <div className="text-xs text-gray-500 truncate">Leads que ya entraron al flujo</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="min-w-[260px]">
+                        <div className="p-4 rounded-2xl border bg-white min-h-[132px] flex flex-col">
+                            <div className="flex items-center justify-between">
+                                <div className="text-xs text-gray-500">Distribución por etapa</div>
+                                <BarChart3 size={16} className="text-gray-400" />
+                            </div>
+                            <div className="mt-2">
+                                <StackedBar segments={stageSegments} />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="min-w-[260px]">
+                        <Card
+                            title="Satisfacción del cliente (CSAT)"
+                            value={csatAvg == null ? '—' : csatAvg.toFixed(1)}
+                            hint={csatAvg == null ? 'Conecta tu encuesta post-atención' : `${csatN} respuestas`}
+                            explain="Valoración promedio del servicio por parte de los clientes (escala 1–5)."
+                            className="min-h-[132px]"
+                        >
+                            <div className="mt-2 flex items-center gap-3">
+                                <Stars value={csatAvg || 0} />
+                            </div>
+                        </Card>
+                    </div>
+                </div>
             </div>
 
-            {/* KPIs resumidos (con count-up) */}
+            {/* KPIs resumidos */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-4">
-                <Card
-                    title="Leads totales"
-                    value={cuTotal}
-                    className="min-h-[104px]"
-                    explain="Cantidad de oportunidades generadas en el periodo."
-                />
-                <Card
-                    title="Aprobados"
-                    value={cuAprob}
-                    hint={`Tasa ${cuPct}%`}
-                    className="min-h-[104px]"
-                    explain="Casos con decisión positiva respecto al total."
-                />
-                <Card
-                    title="Alternativa"
-                    value={cuAlt}
-                    className="min-h-[104px]"
-                    explain="Casos a los que se sugiere un producto distinto."
-                />
-                <Card
-                    title="En revisión"
-                    value={cuRev}
-                    className="min-h-[104px]"
-                    explain="Casos que están siendo analizados por IA/operaciones."
-                />
-                <Card
-                    title="Pend. docs prom."
-                    value={(data?.totals?.missing_avg || 0).toFixed(1)}
-                    className="min-h-[104px]"
-                    explain="Promedio de documentos faltantes por caso."
-                />
+                <Card title="Leads totales" value={cuTotal} className="min-h-[104px]" explain="Cantidad de oportunidades generadas en el periodo." />
+                <Card title="Aprobados" value={cuAprob} hint={`Tasa ${cuPct}%`} className="min-h-[104px]" explain="Casos con decisión positiva respecto al total." />
+                <Card title="Alternativa" value={cuAlt} className="min-h-[104px]" explain="Casos a los que se sugiere un producto distinto." />
+                <Card title="En revisión" value={cuRev} className="min-h-[104px]" explain="Casos que están siendo analizados por IA/operaciones." />
+                <Card title="Pend. docs prom." value={(data?.totals?.missing_avg || 0).toFixed(1)} className="min-h-[104px]" explain="Promedio de documentos faltantes por caso." />
             </div>
 
             {/* Funnel */}
@@ -496,10 +425,7 @@ export default function BamOpsPanel() {
                                     <span>{v} · {pct}%</span>
                                 </div>
                                 <div className="h-2 bg-white border rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full bg-bami-yellow"
-                                        style={{ width: `${pct}%`, transition: `width 700ms ${EASE}` }}
-                                    />
+                                    <div className="h-full bg-bami-yellow" style={{ width: `${pct}%`, transition: `width 700ms ${EASE}` }} />
                                 </div>
                             </div>
                         )
@@ -512,7 +438,7 @@ export default function BamOpsPanel() {
                 )}
             </div>
 
-            {/* Distribuciones adicionales */}
+            {/* Distribuciones */}
             <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-3">
                 <div className="p-4 bg-gray-50 rounded-xl">
                     <div className="font-semibold mb-2">Leads por producto</div>
@@ -543,7 +469,7 @@ export default function BamOpsPanel() {
                 </div>
             </div>
 
-            {/* Leads recientes (tabla) */}
+            {/* Tabla leads */}
             <div className="mt-6">
                 <div className="font-semibold mb-2">Leads recientes</div>
                 {showExplain && <div className="text-[11px] text-gray-500 mb-2">Lista compacta de los últimos leads generados y su etapa actual.</div>}
