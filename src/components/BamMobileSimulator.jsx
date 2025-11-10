@@ -25,7 +25,7 @@ const MUTED = '#A7AFB7'
 
 // límites del shell
 const SHELL_MAX_W = 420
-the SHELL_MAX_H = 840
+const SHELL_MAX_H = 840
 const SHELL_VW   = 0.92
 const SHELL_VH   = 0.92
 
