@@ -114,7 +114,7 @@ const ensureVisible = async (el) => {
 
 /* ------------------------------ Componente ------------------------------ */
 export default function BamiAgent({ caseData, product, controls }) {
-    const [open, setOpen] = useState(true)
+    const [open, setOpen] = useState(true)    // visibilidad del panel "BAMI Autopilot"
     const [running, setRunning] = useState(false)
     const [feed, setFeed] = useState([])
     const feedRef = useRef(null)
@@ -249,7 +249,6 @@ export default function BamiAgent({ caseData, product, controls }) {
             targets: { selectors: ['btn-crear-expediente','[data-agent-id="btn-crear-expediente"]'], texts: ['crear expediente','nuevo expediente'] },
             run: () => controls?.start?.(),
             after: async () => {
-                // Abrimos tracker SOLO en UI principal (NO en simulador durante Autopilot)
                 window.dispatchEvent(new Event('ui:tracker:open'))
             }
         },
@@ -260,15 +259,13 @@ export default function BamiAgent({ caseData, product, controls }) {
             targets: { selectors: ['btn-recomendado','[data-agent-id="btn-recomendado"]','[data-agent-id="btn-subir-documentos"]'], texts: ['subir documentos','continuar'] },
             run: () => controls?.openUploadEverywhere?.(),
             after: async () => {
-                // ✅ Corrección: si el simulador está abierto, asegurar upload DENTRO del simulador
-                // Cierra cualquier upload de escritorio, abre en simulador y ejecuta la demo allí.
+                // subir docs SOLO dentro del simulador durante Autopilot
                 window.dispatchEvent(new Event('ui:upload:close'))
                 window.dispatchEvent(new Event('upload:close'))
                 window.dispatchEvent(new Event('sim:open'))
                 await wait(120)
                 window.dispatchEvent(new Event('sim:upload'))
                 window.dispatchEvent(new Event('sim:upload:demo'))
-                // mantener tracker visible en UI principal sin abrir overlays del simulador
                 setTimeout(() => window.dispatchEvent(new Event('ui:tracker:open')), 900)
             }
         },
@@ -292,54 +289,58 @@ export default function BamiAgent({ caseData, product, controls }) {
         { type: 'speak', id: 'end', say: 'Listo. Flujo presentado de inicio a fin.' }
     ]
 
-    // ---- NUEVO: segundo acto — flujo de cliente en el chat (escritorio) ----
+    // ---- Segundo acto — flujo de cliente en el chat (escritorio) ----
     const runClientChatFlow = async () => {
         try {
-            // Asegurar que la UI muestre el área de Cliente (chat)
             window.dispatchEvent(new Event('bami:clientflow:ensureClientVisible'))
             await wait(250)
 
-            // Abrimos el chat y dejamos que BAMI se presente (greet interno del widget)
             window.dispatchEvent(new Event('ui:open'))
             await wait(900)
 
             const send = (role, text) =>
                 window.dispatchEvent(new CustomEvent('ui:msg', { detail: { role, text } }))
 
-            // Cliente escribe su intención
             send('user', 'Hola BAMI 👋')
             await wait(900)
             send('user', `Quiero aplicar a ${product || 'Tarjeta de Crédito'}`)
             await wait(700)
 
-            // Creamos el expediente desde controles (refleja en tracker y chat)
             await Promise.resolve(controls?.start?.())
             await wait(600)
 
-            // Abre asistente de subida + demo de arrastre/envío (en escritorio en este 2º acto)
             window.dispatchEvent(new Event('ui:upload'))
             window.dispatchEvent(new Event('upload:demo'))
             await wait(1600)
 
-            // Validación con IA (el widget cambia a pestaña IA y muestra pasos)
             window.dispatchEvent(new Event('ui:validate'))
             await wait(3200)
 
-            // Cliente pide asesor humano (el widget cambia a pestaña Asesor)
             send('user', '¿Me puede apoyar un asesor humano?')
             window.dispatchEvent(new Event('ui:advisor'))
             await wait(2600)
 
-            // Abrimos tracker de detalle desde el chat
             window.dispatchEvent(new Event('ui:tracker:open'))
             await wait(1000)
 
             send('user', 'Perfecto, gracias 🙌')
             logLine('Flujo de cliente en chat finalizado.')
-        } catch (e) {
+        } catch {
             logLine('No se pudo completar el flujo de cliente en chat (demo).')
         }
     }
+
+    // —— Cerrar la ventanita Autopilot de forma agresiva/defensiva ——
+    const closeAutopilotPanel = () => {
+        setOpen(false)                                         // estado local
+        window.__BAMI_AUTOPILOT_PANEL_OPEN__ = false           // bandera global
+        window.dispatchEvent(new Event('agent:autopilot:hide'))// evento por si alguien la reabre
+    }
+    useEffect(() => {
+        const h = () => setOpen(false)
+        window.addEventListener('agent:autopilot:hide', h)
+        return () => window.removeEventListener('agent:autopilot:hide', h)
+    }, [])
 
     // ---- Secuencia principal del Autopilot + encadenar el flujo de cliente ----
     const runDemo = async () => {
@@ -347,7 +348,8 @@ export default function BamiAgent({ caseData, product, controls }) {
         setRunning(true)
         logLine('Iniciando Autopilot…')
 
-        // 🔒 Señales globales (bloquean aperturas indeseadas durante Autopilot)
+        // 🔒 Bloquear aperturas indeseadas y CERRAR la ventanita inmediatamente
+        closeAutopilotPanel()
         window.__BAMI_AGENT_ACTIVE__ = true
         window.__BAMI_DISABLE_FLOATING__ = true
         window.__BAMI_LOCK_TRACKER__ = true
@@ -359,10 +361,8 @@ export default function BamiAgent({ caseData, product, controls }) {
                 await wait(260)
             }
 
-            // Esperar un poco a que el tracker “termine” visualmente
             await wait(1200)
 
-            // Inyectar lead en OPS (demo) con datos del caso actual
             const cc = getCase?.() || caseData || {}
             window.dispatchEvent(new CustomEvent('bami:ops:ingestLead', { detail: { case: {
                         id: cc.id || `C${Math.floor(Math.random()*900000)+100000}`,
@@ -372,12 +372,11 @@ export default function BamiAgent({ caseData, product, controls }) {
                         stage: cc.stage || 'aprobado'
                     }}}))
 
-            // ✅ Cerrar simulador y sus modales ANTES de pasar al flujo "cliente"
-            closeEverything()                 // cierra ui+sim overlays
-            controls?.closeSimulator?.()      // redundante por si el simulador controla su estado
+            // Cerrar simulador/overlays antes del segundo acto
+            closeEverything()
+            controls?.closeSimulator?.()
             await wait(400)
 
-            // 🔓 Liberar banderas para permitir UI normal de escritorio
             window.__BAMI_LOCK_TRACKER__ = false
             window.__BAMI_SUPPRESS_SIM_TRACKER__ = false
             window.__BAMI_AGENT_ACTIVE__ = false
@@ -386,7 +385,7 @@ export default function BamiAgent({ caseData, product, controls }) {
             logLine('Mostrando ahora el flujo “como cliente” en el chat…')
             await wait(600)
             await runClientChatFlow()
-        } catch (e) {
+        } catch {
             logLine('El Autopilot se interrumpió.')
         } finally {
             setRunning(false)
@@ -399,51 +398,66 @@ export default function BamiAgent({ caseData, product, controls }) {
             {/* Lanzador / Estado */}
             <div className="fixed right-4 bottom-4 z-[2000000]">
                 <div className="flex items-end gap-3">
-                    {/* Panel de estado / feed */}
-                    {open && (
-                        <div className="w-[280px] max-w-[80vw] rounded-2xl border shadow-lg bg-white overflow-hidden">
-                            <div className="px-3 py-2 border-b flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <Bot size={16} />
-                                    <div className="text-sm font-semibold">BAMI Autopilot</div>
-                                </div>
-                                <button className="p-1 rounded hover:bg-gray-100" onClick={() => setOpen(false)} aria-label="Cerrar panel">
-                                    <XIcon size={14}/>
-                                </button>
-                            </div>
-                            <div ref={feedRef} className="max-h-[180px] overflow-auto text-xs px-3 py-2 space-y-1">
-                                <div className="text-[11px] text-gray-500">{insight}</div>
-                                {feed.map(line => (
-                                    <div key={line.id} className="leading-relaxed">
-                                        <span className="text-gray-400 mr-1">•</span>{line.text}
+                    {/* Panel de estado / feed (ventanita Autopilot) */}
+                    <AnimatePresence>
+                        {open && (
+                            <motion.div
+                                initial={{ y: 24, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1, transition: { duration: 0.28, ease: EASE } }}
+                                exit={{ y: 24, opacity: 0, transition: { duration: 0.22, ease: EASE } }}
+                                className="w-[320px] max-w-[92vw] rounded-2xl border shadow-xl bg-white overflow-hidden"
+                            >
+                                <div className="px-3 py-2 border-b flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Bot size={16} />
+                                        <div className="text-sm font-semibold">BAMI Autopilot</div>
                                     </div>
-                                ))}
-                                {!feed.length && <div className="text-gray-500">Pulsa “Iniciar demo”.</div>}
-                            </div>
-                            <div className="px-3 py-2 border-t flex items-center gap-2">
-                                <button
-                                    className="btn btn-dark btn-sm"
-                                    onClick={runDemo}
-                                    disabled={running}
-                                >
-                                    <Play size={14} className="mr-1" /> Iniciar demo
-                                </button>
-                                <button
-                                    className="btn btn-sm"
-                                    onClick={() => {
-                                        closeEverything()
-                                        window.__BAMI_LOCK_TRACKER__ = false
-                                        window.__BAMI_SUPPRESS_SIM_TRACKER__ = false
-                                        window.__BAMI_AGENT_ACTIVE__ = false
-                                        window.__BAMI_DISABLE_FLOATING__ = false
-                                        logLine('Señales reiniciadas y UI cerrada.')
-                                    }}
-                                >
-                                    Reset UI
-                                </button>
-                            </div>
-                        </div>
-                    )}
+                                    <button
+                                        className="p-1 rounded hover:bg-gray-100"
+                                        onClick={() => { setOpen(false); window.__BAMI_AUTOPILOT_PANEL_OPEN__ = false }}
+                                        aria-label="Cerrar panel"
+                                    >
+                                        <XIcon size={14}/>
+                                    </button>
+                                </div>
+
+                                <div ref={feedRef} className="max-h-[180px] overflow-auto text-xs px-3 py-2 space-y-1">
+                                    <div className="text-[11px] text-gray-500">{insight}</div>
+                                    {feed.map(line => (
+                                        <div key={line.id} className="leading-relaxed">
+                                            <span className="text-gray-400 mr-1">•</span>{line.text}
+                                        </div>
+                                    ))}
+                                    {!feed.length && <div className="text-gray-500">Pulsa “Iniciar demo”.</div>}
+                                </div>
+
+                                <div className="px-3 py-2 border-t flex items-center gap-2">
+                                    <button
+                                        className="btn btn-dark btn-sm"
+                                        onClick={runDemo}
+                                        disabled={running}
+                                    >
+                                        <Play size={14} className="mr-1" /> Iniciar demo
+                                    </button>
+                                    <button
+                                        className="btn btn-sm"
+                                        onClick={() => {
+                                            closeEverything()
+                                            window.__BAMI_LOCK_TRACKER__ = false
+                                            window.__BAMI_SUPPRESS_SIM_TRACKER__ = false
+                                            window.__BAMI_AGENT_ACTIVE__ = false
+                                            window.__BAMI_DISABLE_FLOATING__ = false
+                                            setOpen(true)
+                                            window.__BAMI_AUTOPILOT_PANEL_OPEN__ = true
+                                            logLine('Señales reiniciadas y UI cerrada.')
+                                        }}
+                                    >
+                                        Reset UI
+                                    </button>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
 
                     {/* Botón flotante para abrir/cerrar el panel */}
                     <button
