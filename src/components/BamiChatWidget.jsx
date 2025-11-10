@@ -10,7 +10,7 @@ import {
 import { Bot, Headphones, Sparkles, Send, BarChart2, LayoutDashboard } from 'lucide-react'
 import ProgressRing from './ProgressRing.jsx'
 
-/** — NLP simple y utilidades — **/
+/** — NLP simple y utilidades (idéntico que antes) — **/
 const PRODUCT_SYNONYMS = {
     'Tarjeta de Crédito': ['tarjeta de credito','tarjeta de crédito','tarjeta','tc','visa','mastercard','master card'],
     'Préstamo Personal': ['prestamo','préstamo','prestamo personal','préstamo personal','credifacil','credi facil','credito personal','crédito personal','credito','crédito'],
@@ -53,7 +53,7 @@ function parseIntent(text){
     return { action: null, product: null }
 }
 
-/** — Burbujas ricas — **/
+/** — Burbujas ricas (idéntico que antes) — **/
 function BamiHeaderMini(){
     return (
         <div className="flex items-center gap-1 mb-1 text-[10px] sm:text-[11px] text-gray-500">
@@ -132,7 +132,7 @@ export default function BamiChatWidget({
     const greetedOnce = useRef(false)
     const [bodyPad, setBodyPad] = useState(88)
 
-    // Estabilizador de layout
+    // === Estabilizador de layout: estilos locales ===
     const StableStyles = (
         <style
             dangerouslySetInnerHTML={{
@@ -145,7 +145,7 @@ export default function BamiChatWidget({
         />
     )
 
-    // Alto footer dinámico
+    // Alto footer dinámico (umbral + rAF para evitar ping-pong 1px)
     useLayoutEffect(() => {
         const el = footerRef.current
         if (!el) return
@@ -158,7 +158,9 @@ export default function BamiChatWidget({
             if (Math.abs(h - lastH) < 2) return
             lastH = h
             if (frame) cancelAnimationFrame(frame)
-            frame = requestAnimationFrame(() => { setBodyPad(Math.max(72, h + 8)) })
+            frame = requestAnimationFrame(() => {
+                setBodyPad(Math.max(72, h + 8))
+            })
         })
         ro.observe(el)
         return () => { if (frame) cancelAnimationFrame(frame); ro.disconnect() }
@@ -170,18 +172,19 @@ export default function BamiChatWidget({
     const push=(role,text)=>setMessages(m=>[...m,{id:Date.now()+Math.random(),role,text}])
     const pushRich=(payload)=>setMessages(m=>[...m,{id:Date.now()+Math.random(),role:'bami',type:'rich',payload}])
 
+    // Scroll sin smooth (evita micro-reflujos en serie)
     const scrollBottom=()=>{ requestAnimationFrame(()=>{ listRef.current?.scrollTo({ top:listRef.current.scrollHeight, behavior:'auto' }) }) }
     useEffect(scrollBottom,[messages,typing])
 
     useEffect(()=>{ const onU=(e)=>setC(e.detail); window.addEventListener('bami:caseUpdate',onU); return ()=>window.removeEventListener('bami:caseUpdate',onU) },[])
 
-    // Suscripciones (SOLO por prefijo; eliminamos 'upload:open' global para evitar abrir doble)
+    // Suscripciones (compatibles con embed)
     useEffect(()=>{
-        const openChat = ()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true) }
-        const openUpload = ()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) { setShowUpload(true); return } ; setOpen(true); setShowUpload(true); push('bami','Abrí el asistente de subida de documentos.') }
-        const runValidate = async()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) { return } ; setOpen(true); await validateAI(true) }
-        const callAdvisor = ()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true); connectAdvisor() }
-        const pushMsg = (e)=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true); push(e.detail?.role||'bami', e.detail?.text||'') }
+        const openChat = ()=>setOpen(true)
+        const openUpload = ()=>{ setOpen(true); setShowUpload(true); push('bami','Abrí el asistente de subida de documentos.') }
+        const runValidate = async()=>{ setOpen(true); await validateAI(true) }
+        const callAdvisor = ()=>{ setOpen(true); connectAdvisor() }
+        const pushMsg = (e)=>{ setOpen(true); push(e.detail?.role||'bami', e.detail?.text||'') }
 
         const prefixes = embed ? ['sim'] : ['ui','bami']
         const allEvents = [
@@ -193,9 +196,11 @@ export default function BamiChatWidget({
         ]
 
         prefixes.forEach(p => allEvents.forEach(([n,fn]) => window.addEventListener(`${p}:${n}`, fn)))
+        window.addEventListener('upload:open', openUpload)
 
         return ()=> {
             prefixes.forEach(p => allEvents.forEach(([n,fn]) => window.removeEventListener(`${p}:${n}`, fn)))
+            window.removeEventListener('upload:open', openUpload)
         }
     },[embed])
 
@@ -335,8 +340,6 @@ export default function BamiChatWidget({
     }
 
     const newCase=async(product='Tarjeta de Crédito')=>{
-        // Indicamos que el flujo de cliente debe ser visible
-        try { window.dispatchEvent(new Event('bami:clientflow:ensureClientVisible')) } catch {}
         const cc=await createNewCase(product, getCase()?.applicant || null)
         notify('Expediente creado')
         push('user',`Iniciar expediente de ${product}`)
@@ -360,8 +363,8 @@ export default function BamiChatWidget({
                     { label: 'Ver tracker', value: 'tracker' },
                 ]
             })
-            // 🚫 sin 'upload:open' global
             window.dispatchEvent(new Event(`${eventPrefix}:upload`))
+            window.dispatchEvent(new Event('upload:open'))
             window.dispatchEvent(new Event(`${eventPrefix}:tracker:open`))
         },150)
     }
@@ -429,7 +432,7 @@ export default function BamiChatWidget({
     const endAdvisor=()=>{ setAdvisorConnected(false); push('advisor','Gracias por contactarnos. Cierro el chat, pero puedes volver cuando quieras.') }
     const changeChannel=(ch)=>{ setChannel(ch); push('bami',`Continuaremos por ${ch.toUpperCase()} sin perder el progreso.`) }
 
-    /** UI encabezado / mini tracker **/
+    /** UI encabezado / mini tracker (idéntico que antes) **/
     const HeaderTab=({id,icon:Icon,children})=>(
         <button onClick={()=>setMode(id)} className={`flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs sm:text-sm ${mode===id?'bg-white shadow':'hover:bg-white/60'}`}>
             <Icon size={16}/> {children}
@@ -572,7 +575,8 @@ export default function BamiChatWidget({
         </div>
     )
 
-    const baseH_app = 'calc(var(--vh, 1vh) * 86 - 0px)'
+    // Alturas por variante
+    const baseH_app = 'calc(var(--vh, 1vh) * 86 - 0px)' // dentro del teléfono
     const baseH_full = 'calc((var(--vh, 1vh) * 100) - 160px)'
 
     const containerStyle =
@@ -583,6 +587,7 @@ export default function BamiChatWidget({
                 : (variant==='fullscreen' ? { height: baseH_full, minHeight: 420 }
                     : (variant==='panel' ? { height: 520 } : { height: 520 })))
 
+    // ⚠️ 'relative' + contención para estabilidad (anti-flicker).
     const ChatWindow=(
         <div
             className="bami-stable relative min-h-0 flex flex-col h-full w-full"
@@ -602,13 +607,14 @@ export default function BamiChatWidget({
         </>)
     }
     if(variant==='fullscreen' || variant==='app'){
+        // 🔧 IMPORTANTE: h-full aquí asegura que el 100% del ChatWindow tenga referencia válida dentro del simulador.
         return (<>
             <div className="rounded-none sm:rounded-none overflow-hidden h-full">{ChatWindow}</div>
             <UploadAssistant open={showUpload} onClose={()=>setShowUpload(false)} onUploaded={afterUpload} context={embed?'phone':'overlay'}/>
         </>)
     }
 
-    // Floating (legacy)
+    // — Floating (legacy) —
     const disableFloating = disableFloatingTrigger || (typeof window!=='undefined' && window.__BAMI_DISABLE_FLOATING__===true)
     if(disableFloating){
         return (<UploadAssistant open={showUpload} onClose={()=>setShowUpload(false)} onUploaded={afterUpload} context={embed?'phone':'overlay'}/>)
