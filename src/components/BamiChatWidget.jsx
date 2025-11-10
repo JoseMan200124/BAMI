@@ -10,7 +10,7 @@ import {
 import { Bot, Headphones, Sparkles, Send, BarChart2, LayoutDashboard, X } from 'lucide-react'
 import ProgressRing from './ProgressRing.jsx'
 
-/** — NLP simple y utilidades — **/
+/** ================= NLP y utilidades ================= **/
 const PRODUCT_SYNONYMS = {
     'Tarjeta de Crédito': ['tarjeta de credito','tarjeta de crédito','tarjeta','tc','visa','mastercard','master card'],
     'Préstamo Personal': ['prestamo','préstamo','prestamo personal','préstamo personal','credifacil','credi facil','credito personal','crédito personal','credito','crédito'],
@@ -53,7 +53,7 @@ function parseIntent(text){
     return { action: null, product: null }
 }
 
-/** — Estilos globales para dock + burbujas de marca — **/
+/** ================= Estilos globales (dock + bubbles) ================= **/
 const BrandStyles = (
     <style
         dangerouslySetInnerHTML={{
@@ -61,7 +61,7 @@ const BrandStyles = (
 @keyframes bami-pop { 0% { opacity: 0; transform: translateY(8px) scale(.98) } 100% { opacity: 1; transform: translateY(0) scale(1) } }
 @keyframes bami-ring { 0% { transform: scale(1); opacity:.45 } 70% { opacity:.15 } 100% { transform: scale(1.35); opacity:0 } }
 
-/* Botón dock (flotante) */
+/* Botón dock flotante */
 .bami-dock-glow::before{
   content:'';
   position:absolute; inset:-12px;
@@ -77,12 +77,13 @@ const BrandStyles = (
   pointer-events:none;
 }
 
-/* Burbujas ricas con avatar grande a la izquierda */
+/* Burbujas ricas con avatar grande a la izquierda — USAR SIEMPRE PARA BAMI/IA/ASESOR */
 .bami-speech { display:flex; align-items:flex-end; gap:.75rem; }
 .bami-speech .bami-avatar{
   position:relative; width:60px; height:60px; border-radius:9999px;
   background: white; box-shadow: 0 6px 18px rgba(0,0,0,.10);
   border: 1px solid rgba(0,0,0,.06);
+  flex: 0 0 60px;
 }
 .bami-speech .bami-avatar .ring{
   position:absolute; inset:-6px; border-radius:9999px;
@@ -92,7 +93,7 @@ const BrandStyles = (
 .bami-speech .bami-bubble{
   position:relative; background:#f6f7f9; border:1px solid rgba(0,0,0,.05);
   border-radius:18px; padding:12px 12px 10px;
-  max-width: calc(100% - 72px);  /* deja espacio al avatar */
+  max-width: calc(100% - 72px);
   box-shadow: 0 6px 12px rgba(15,23,42,.06);
 }
 .bami-speech .bami-bubble::before{
@@ -107,14 +108,6 @@ const BrandStyles = (
   padding:.2rem .5rem; border-radius:9999px; margin-bottom:.35rem;
   box-shadow: 0 2px 6px rgba(0,0,0,.05);
 }
-.bami-notch {
-  position:absolute; width:14px; height:14px; background:#fff;
-  transform: rotate(45deg);
-  bottom:-7px; right:28px;
-  border-left:1px solid rgba(0,0,0,.05);
-  border-bottom:1px solid rgba(0,0,0,.05);
-  box-shadow: 0 3px 8px rgba(0,0,0,.06);
-}
 
 /* Estabilidad de scroll */
 .bami-stable, .bami-stable * { transition: none !important; animation: none !important; }
@@ -124,19 +117,24 @@ const BrandStyles = (
     />
 )
 
-/** — Avatar-base grande + burbuja “speech” — **/
+/** ================= Helpers UI ================= **/
+const TextWithBreaks = ({ text }) => {
+    if (!text) return null
+    return (
+        <div className="text-[13px] sm:text-sm leading-5 text-gray-800 whitespace-pre-wrap">
+            {text}
+        </div>
+    )
+}
+
+/** Avatar-base grande + bubble “speech” (siempre el mismo look) **/
 function BamiSpeech({ title, subtitle, children }){
     return (
         <div className="bami-speech">
             {/* Avatar grande */}
             <div className="bami-avatar">
                 <span className="ring" aria-hidden />
-                <img
-                    src="/BAMI.svg"
-                    alt="BAMI"
-                    className="w-full h-full object-contain p-2.5"
-                    draggable={false}
-                />
+                <img src="/BAMI.svg" alt="BAMI" className="w-full h-full object-contain p-2.5" draggable={false}/>
             </div>
 
             {/* Bubble alineada con notch */}
@@ -153,7 +151,7 @@ function BamiSpeech({ title, subtitle, children }){
     )
 }
 
-/** — Contenido reutilizable dentro de la bubble — **/
+/** — Lista/chips rica (mantiene nuevo layout con avatar) — **/
 function Chips({ items, onAction, asButtons=false }){
     const norm = items.map(it => typeof it === 'string' ? { label: it, value: it } : it)
     return (
@@ -193,11 +191,12 @@ function RichListMessage({ payload, onAction }){
     )
 }
 
+/** ================= Componente principal ================= **/
 export default function BamiChatWidget({
                                            variant='floating',
                                            disableFloatingTrigger=false,
                                            allowOpsButton=false,
-                                           embed=false,     // si vive dentro del simulador
+                                           embed=false,
                                        }) {
     const [open,setOpen] = useState(variant==='panel' || variant==='fullscreen' || variant==='app')
     const [messages,setMessages] = useState([])
@@ -215,7 +214,7 @@ export default function BamiChatWidget({
     const greetedOnce = useRef(false)
     const [bodyPad, setBodyPad] = useState(88)
 
-    // Alto footer dinámico
+    // Estabilidad
     useLayoutEffect(() => {
         const el = footerRef.current
         if (!el) return
@@ -236,7 +235,7 @@ export default function BamiChatWidget({
         return () => { if (frame) cancelAnimationFrame(frame); ro.disconnect() }
     }, [])
 
-    // Prefijo dinámico: si el simulador está abierto, forzamos 'sim'
+    // Prefijo de eventos (simulador o UI)
     const basePrefix = embed ? 'sim' : 'ui'
     const getPrefix = () => (typeof window!=='undefined' && window.__BAMI_SIM_OPEN__ ? 'sim' : basePrefix)
     const ev = (name) => new Event(`${getPrefix()}:${name}`)
@@ -249,12 +248,12 @@ export default function BamiChatWidget({
 
     useEffect(()=>{ const onU=(e)=>setC(e.detail); window.addEventListener('bami:caseUpdate',onU); return ()=>window.removeEventListener('bami:caseUpdate',onU) },[])
 
-    // Suscripciones (compatibles con embed)
+    // Suscripciones
     useEffect(()=>{
         const openChat = ()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true) }
         const closeChat = ()=>{ setOpen(false); setShowUpload(false) }
         const openUpload = ()=>{ setOpen(true); setShowUpload(true); push('bami','Abrí el asistente de subida de documentos.') }
-        const runValidate = async()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) { return } ; setOpen(true); await validateAI(true) }
+        const runValidate = async()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true); await validateAI(true) }
         const callAdvisor = ()=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true); connectAdvisor() }
         const pushMsg = (e)=>{ if (window.__BAMI_AGENT_ACTIVE__===true) return; setOpen(true); push(e.detail?.role||'bami', e.detail?.text||'') }
 
@@ -271,7 +270,7 @@ export default function BamiChatWidget({
         return ()=> { prefixes.forEach(p => allEvents.forEach(([n,fn]) => window.removeEventListener(`${p}:${n}`, fn))) }
     },[embed])
 
-    // SSE cuando hay case y el chat está abierto
+    // SSE
     useEffect(()=>{
         if(!open || !getCase()?.id){ if(sseRef.current){ sseRef.current.close(); sseRef.current=null } ; return }
         const caseId=getCase().id
@@ -311,106 +310,7 @@ export default function BamiChatWidget({
         }
     },[open])
 
-    const processInput = async (val)=>{
-        const t = val.toLowerCase()
-        if (t==='tracker') { window.dispatchEvent(ev('tracker:open')); return }
-        if (t==='nuevo' || t==='sí' || t==='si') return newCase('Tarjeta de Crédito')
-        if (t.includes('falta') || t.includes('pendiente')) return askMissing()
-        if (t.includes('subir') || t.includes('document')) return openUploadManual()
-        if (t.includes('valid')) return validateAI()
-        if (t.includes('asesor') || t.includes('humano')) return connectAdvisor()
-
-        const { action, product } = parseIntent(val)
-        const detectedProduct = product || detectProduct(val)
-
-        if (detectedProduct && (!action || action === 'product_info')) return newCase(detectedProduct)
-
-        if (action === 'create_case' && !detectedProduct) {
-            window.dispatchEvent(new Event('bami:clientflow:start'))
-            window.dispatchEvent(new Event('bami:clientflow:ensureClientVisible'))
-            push('bami','Perfecto, ¿para qué producto deseas aplicar?')
-            pushRich({
-                title: 'Elige un producto',
-                kind: 'chips',
-                asButtons: true,
-                items: [
-                    { label: 'Tarjeta de Crédito', value: 'Tarjeta de Crédito' },
-                    { label: 'Préstamo Personal', value: 'Préstamo Personal' },
-                    { label: 'Hipoteca', value: 'Hipoteca' },
-                    { label: 'PyME', value: 'PyME' },
-                ]
-            })
-            return
-        }
-
-        if (action === 'create_case' && detectedProduct) return newCase(detectedProduct)
-
-        if (action === 'ask_requirements') {
-            window.dispatchEvent(new Event('bami:clientflow:start'))
-            window.dispatchEvent(new Event('bami:clientflow:ensureClientVisible'))
-            const p = detectedProduct || (getCase()?.product ?? 'Tarjeta de Crédito')
-            const req = PRODUCT_RULES[p] || []
-            pushRich({
-                title: `Requisitos para ${p}`,
-                kind: 'tags',
-                items: req.map(r=>r.replaceAll('_',' '))
-            })
-            pushRich({
-                title: '¿Abrimos tu expediente?',
-                kind: 'chips',
-                asButtons: true,
-                items: [{label: `Aplicar a ${p}`, value: `aplicar ${p}`}]
-            })
-            return
-        }
-
-        if (action === 'ask_times') {
-            window.dispatchEvent(new Event('bami:clientflow:ensureClientVisible'))
-            push('bami', 'El tiempo típico de análisis es **8–24h hábiles**. Puedo iniciar tu expediente cuando me indiques el producto.')
-            return
-        }
-
-        if (action === 'upload_docs') return openUploadManual()
-        if (action === 'advisor') return connectAdvisor()
-        if (action === 'validate') return validateAI()
-
-        try{
-            setTyping(true)
-            const apiMode = (mode==='advisor') ? 'asesor' : (mode==='ai' ? 'ia' : mode)
-            const reply = await chatBackend({ message: val, mode: apiMode })
-            setTyping(false)
-            const role = mode==='advisor' ? 'advisor' : (mode==='ai' ? 'ai' : 'bami')
-            push(role, reply)
-        } catch {
-            setTyping(false)
-            push('bami', localWarmupReply(val))
-        }
-    }
-    const sendText = async (val)=>{
-        const v=(val||'').trim()
-        if(!v) return
-        push('user',v)
-        await processInput(v)
-    }
-
-    const handleSend=async(e)=>{
-        e?.preventDefault()
-        const val=(inputRef.current?.value || '').trim()
-        if(!val) return
-        inputRef.current.value=''
-        push('user',val)
-        await processInput(val)
-    }
-
-    function localWarmupReply(userText=''){
-        const {action,product}=parseIntent(userText)
-        if(action==='create_case' && product){ return `Puedo abrir tu expediente para **${product}** desde aquí. ¿Confirmas que iniciemos ahora? Escribe **"nuevo"** o **"sí"**.` }
-        if(action==='ask_requirements'){ const p=product || 'Tarjeta de Crédito'; const req=PRODUCT_RULES[p]?.map(r=>r.replaceAll('_', ' ')).join(', ') || 'requisitos básicos'; return `Para **${p}** se requiere: ${req}. Si gustas, puedo abrir tu expediente; dime “aplicar a ${p}”.` }
-        if(action==='ask_times') return 'El tiempo típico de análisis es **8–24h hábiles**, sujeto a carga y validaciones.'
-        if(action==='advisor') return 'Puedo conectarte con un asesor humano en cualquier momento. Escribe **asesor** para iniciar.'
-        return ['Puedo crear tu expediente, mostrar **requisitos** y **tiempos**, abrir **subida de documentos** o conectarte con un **asesor**.','¿Qué deseas hacer?'].join('\n')
-    }
-
+    /** ================= Acciones de flujo ================= **/
     const startClientFlowSignals = () => {
         window.dispatchEvent(new Event('bami:clientflow:start'))
         window.dispatchEvent(new Event('bami:clientflow:ensureClientVisible'))
@@ -513,7 +413,7 @@ export default function BamiChatWidget({
     const endAdvisor=()=>{ setAdvisorConnected(false); push('advisor','Gracias por contactarnos. Cierro el chat, pero puedes volver cuando quieras.') }
     const changeChannel=(ch)=>{ setChannel(ch); push('bami',`Continuaremos por ${ch.toUpperCase()} sin perder el progreso.`) }
 
-    /** UI encabezado / mini tracker **/
+    /** ================= Header / Mini tracker ================= **/
     const HeaderTab=({id,icon:Icon,children})=>(
         <button onClick={()=>setMode(id)} className={`flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs sm:text-sm ${mode===id?'bg-white shadow':'hover:bg-white/60'}`}>
             <Icon size={16}/> {children}
@@ -540,17 +440,16 @@ export default function BamiChatWidget({
         )
     }
 
-    // Header responsive
+    // Controles header
     const ControlStrip = ({ compact = false }) => (
-        <div className={`flex items-center ${compact ? 'gap-1.5' : 'gap-2'}`}>
+        <div className={`flex items${compact ? '' : ''} ${compact ? 'gap-1.5' : 'gap-2'}`}>
             <HeaderTab id="bami" icon={Bot}>BAMI</HeaderTab>
             <HeaderTab id="ai" icon={Sparkles}>IA</HeaderTab>
             <HeaderTab id="advisor" icon={Headphones}>Asesor</HeaderTab>
             <button
                 className={`ml-0.5 border rounded-md ${compact ? 'px-2 py-1' : 'px-2.5 py-1.5'} inline-flex items-center gap-1`}
                 onClick={()=>window.dispatchEvent(ev('tracker:toggle'))}
-                title="Tracker"
-                aria-label="Abrir tracker"
+                title="Tracker" aria-label="Abrir tracker"
             >
                 <BarChart2 size={14}/><span className="hidden sm:inline">Tracker</span>
             </button>
@@ -594,6 +493,25 @@ export default function BamiChatWidget({
         </div>
     )
 
+    /** ================= Chat body: SIEMPRE render con avatar para BAMI/IA/ASESOR ================= **/
+    const renderMsg = (m) => {
+        if (m.type === 'rich') {
+            return <RichListMessage key={m.id} payload={m.payload} onAction={(v)=>sendText(v)} />
+        }
+        if (m.role === 'user') {
+            // Mantén tu componente de usuario
+            return <MessageBubble key={m.id} role={m.role} text={m.text} />
+        }
+        // Para bami/ai/advisor -> SIEMPRE BamiSpeech (icono grande consistente)
+        return (
+            <div key={m.id}>
+                <BamiSpeech>
+                    <TextWithBreaks text={m.text} />
+                </BamiSpeech>
+            </div>
+        )
+    }
+
     const ChatBody=(
         <div
             ref={listRef}
@@ -602,13 +520,17 @@ export default function BamiChatWidget({
             aria-label="Mensajes del chat"
             style={{ paddingBottom: bodyPad }}
         >
-            {messages.map(m => (
-                m.type === 'rich'
-                    ? <RichListMessage key={m.id} payload={m.payload} onAction={sendText}/>
-                    : <MessageBubble key={m.id} role={m.role} text={m.text} />
-            ))}
-            {typing && <div className="max-w-[85%] rounded-2xl px-3 py-2 text-sm bg-gray-100"><TypingDots/></div>}
-            {mode==='advisor' && !advisorConnected && <div className="text-xs text-gray-600">En cola para asesor… Quedan <b>{advisorQueue}</b> por delante.</div>}
+            {messages.map(renderMsg)}
+            {typing && (
+                <BamiSpeech>
+                    <div className="max-w-[85%] rounded-2xl px-1 py-0.5">
+                        <TypingDots/>
+                    </div>
+                </BamiSpeech>
+            )}
+            {mode==='advisor' && !advisorConnected && (
+                <div className="text-xs text-gray-600 ml-[72px]">En cola para asesor… Quedan <b>{advisorQueue}</b> por delante.</div>
+            )}
         </div>
     )
 
@@ -652,7 +574,7 @@ export default function BamiChatWidget({
             <div className="sm:col-span-3 flex">
                 <button
                     className="btn btn-dark text-xs sm:text-sm px-3 h-12 w-full sm:min-w-[100px] rounded-xl inline-flex items-center justify-center gap-1"
-                    onClick={handleSend}
+                    onClick={async(e)=>{ e?.preventDefault(); const v=(inputRef.current?.value||'').trim(); if(!v) return; inputRef.current.value=''; push('user',v); await processInput(v) }}
                     aria-label="Enviar mensaje"
                 >
                     <Send size={14}/> Enviar
@@ -669,14 +591,15 @@ export default function BamiChatWidget({
             data-sticky-footer
         >
             {QuickActions}
-            <form onSubmit={handleSend} className="border-t">{ChatInputRow}</form>
+            <form onSubmit={(e)=>{ e.preventDefault(); const v=(inputRef.current?.value||'').trim(); if(!v) return; inputRef.current.value=''; push('user',v); processInput(v) }} className="border-t">
+                {ChatInputRow}
+            </form>
         </div>
     )
 
     // Alturas por variante
     const baseH_app = 'calc(var(--vh, 1vh) * 86 - 0px)'
     const baseH_full = 'calc((var(--vh, 1vh) * 100) - 160px)'
-
     const containerStyle =
         embed
             ? { height: '100%' }
@@ -697,7 +620,7 @@ export default function BamiChatWidget({
         </div>
     )
 
-    /** Variantes no flotantes **/
+    /** ================= Variantes no flotantes ================= **/
     if(variant==='panel'){
         return (<>
             {BrandStyles}
@@ -713,7 +636,7 @@ export default function BamiChatWidget({
         </>)
     }
 
-    /** — Floating rediseñado: dock grande + chat emergente con notch — **/
+    /** ================= Flotante: dock grande + notch ================= **/
     const disableFloating = disableFloatingTrigger || (typeof window!=='undefined' && window.__BAMI_DISABLE_FLOATING__===true)
     if(disableFloating){
         return (<>
@@ -767,8 +690,7 @@ export default function BamiChatWidget({
                     <button
                         onClick={()=>setOpen(false)}
                         className="absolute top-2 right-2 p-1.5 rounded-full hover:bg-black/5 transition"
-                        aria-label="Cerrar chat"
-                        title="Cerrar"
+                        aria-label="Cerrar chat" title="Cerrar"
                     >
                         <X size={16} />
                     </button>
@@ -784,4 +706,90 @@ export default function BamiChatWidget({
             />
         </>
     )
+
+    /** ================= Handlers ================= **/
+    async function processInput(val){
+        const t = (val||'').toLowerCase()
+        if (t==='tracker') { window.dispatchEvent(ev('tracker:open')); return }
+        if (t==='nuevo' || t==='sí' || t==='si') return newCase('Tarjeta de Crédito')
+        if (t.includes('falta') || t.includes('pendiente')) return askMissing()
+        if (t.includes('subir') || t.includes('document')) return openUploadManual()
+        if (t.includes('valid')) return validateAI()
+        if (t.includes('asesor') || t.includes('humano')) return connectAdvisor()
+
+        const { action, product } = parseIntent(val)
+        const detectedProduct = product || detectProduct(val)
+
+        if (detectedProduct && (!action || action === 'product_info')) return newCase(detectedProduct)
+
+        if (action === 'create_case' && !detectedProduct) {
+            window.dispatchEvent(new Event('bami:clientflow:start'))
+            window.dispatchEvent(new Event('bami:clientflow:ensureClientVisible'))
+            push('bami','Perfecto, ¿para qué producto deseas aplicar?')
+            pushRich({
+                title: 'Elige un producto',
+                kind: 'chips',
+                asButtons: true,
+                items: [
+                    { label: 'Tarjeta de Crédito', value: 'Tarjeta de Crédito' },
+                    { label: 'Préstamo Personal', value: 'Préstamo Personal' },
+                    { label: 'Hipoteca', value: 'Hipoteca' },
+                    { label: 'PyME', value: 'PyME' },
+                ]
+            })
+            return
+        }
+
+        if (action === 'create_case' && detectedProduct) return newCase(detectedProduct)
+
+        if (action === 'ask_requirements') {
+            window.dispatchEvent(new Event('bami:clientflow:start'))
+            window.dispatchEvent(new Event('bami:clientflow:ensureClientVisible'))
+            const p = detectedProduct || (getCase()?.product ?? 'Tarjeta de Crédito')
+            const req = PRODUCT_RULES[p] || []
+            pushRich({
+                title: `Requisitos para ${p}`,
+                kind: 'tags',
+                items: req.map(r=>r.replaceAll('_',' '))
+            })
+            pushRich({
+                title: '¿Abrimos tu expediente?',
+                kind: 'chips',
+                asButtons: true,
+                items: [{label: `Aplicar a ${p}`, value: `aplicar ${p}`}]
+            })
+            return
+        }
+
+        if (action === 'ask_times') {
+            window.dispatchEvent(new Event('bami:clientflow:ensureClientVisible'))
+            push('bami', 'El tiempo típico de análisis es **8–24h hábiles**. Puedo iniciar tu expediente cuando me indiques el producto.')
+            return
+        }
+
+        if (action === 'upload_docs') return openUploadManual()
+        if (action === 'advisor') return connectAdvisor()
+        if (action === 'validate') return validateAI()
+
+        try{
+            setTyping(true)
+            const apiMode = (mode==='advisor') ? 'asesor' : (mode==='ai' ? 'ia' : mode)
+            const reply = await chatBackend({ message: val, mode: apiMode })
+            setTyping(false)
+            const role = mode==='advisor' ? 'advisor' : (mode==='ai' ? 'ai' : 'bami')
+            push(role, reply)
+        } catch {
+            setTyping(false)
+            push('bami', localWarmupReply(val))
+        }
+    }
+
+    function localWarmupReply(userText=''){
+        const {action,product}=parseIntent(userText)
+        if(action==='create_case' && product){ return `Puedo abrir tu expediente para **${product}** desde aquí. ¿Confirmas que iniciemos ahora? Escribe **"nuevo"** o **"sí"**.` }
+        if(action==='ask_requirements'){ const p=product || 'Tarjeta de Crédito'; const req=PRODUCT_RULES[p]?.map(r=>r.replaceAll('_', ' ')).join(', ') || 'requisitos básicos'; return `Para **${p}** se requiere: ${req}. Si gustas, puedo abrir tu expediente; dime “aplicar a ${p}”.` }
+        if(action==='ask_times') return 'El tiempo típico de análisis es **8–24h hábiles**, sujeto a carga y validaciones.'
+        if(action==='advisor') return 'Puedo conectarte con un asesor humano en cualquier momento. Escribe **asesor** para iniciar.'
+        return ['Puedo crear tu expediente, mostrar **requisitos** y **tiempos**, abrir **subida de documentos** o conectarte con un **asesor**.','¿Qué deseas hacer?'].join('\n')
+    }
 }
